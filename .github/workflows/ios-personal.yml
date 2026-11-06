@@ -21,7 +21,8 @@ permissions:
 jobs:
   build:
     name: unsigned personal device app
-    runs-on: macos-26
+    # Intel capacity is separate from the macOS ARM pool.
+    runs-on: macos-26-intel
     timeout-minutes: 180
     env:
       GO_VERSION: "1.25"
@@ -62,7 +63,7 @@ jobs:
             android/deps/resources
             android/deps/frameworks
             android/deps/lame-build
-          key: ios-deps-${{ runner.os }}-${{ steps.ish.outputs.rev }}-${{ hashFiles('android/deps/*.sh', 'android/deps/ffmpeg-patch/**', 'android/deps/rclone-mobile/**') }}
+          key: ios-deps-${{ runner.os }}-${{ runner.arch }}-${{ steps.ish.outputs.rev }}-${{ hashFiles('android/deps/*.sh', 'android/deps/ffmpeg-patch/**', 'android/deps/rclone-mobile/**') }}
 
       - name: Build native dependencies
         if: steps.deps-cache.outputs.cache-hit != 'true'
