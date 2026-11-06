@@ -129,6 +129,8 @@ All notable changes to nanoMuse. The format follows [Keep a Changelog](https://k
 
 - iPhone device mentions continued the corresponding synced desktop chat using its conversation and message ids, kept later manual turns syncing, and merged Hub and synced answers under one message id. Desktop targets required the new `task.chat` action.
 
+- Rechecked session quarantine before dispatching device mentions, including quarantine applied while a task receipt was being saved.
+
 - Removed the iPhone's local deadline for tasks sent with `@device`. Stop, disconnection and remote errors still ended the wait; relay and target task limits still applied.
 
 - **A task sent with `@<device>` no longer answers 「完成」 when nothing came back.** An `@Mac …` line whose task did not run showed *Done*, as if the work had happened; it now says the device finished without an answer, and the steps above it say what did happen. ([#718](https://github.com/nano-muse/nanoMuse/issues/718))

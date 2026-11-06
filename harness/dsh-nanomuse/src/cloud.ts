@@ -1031,6 +1031,7 @@ export default class NanomuseCloud extends Service {
         pull: () => sync.pull(),
         line: (sid, mid) => kept.linesOf(sid).find((line) => line.mid === mid),
         isBatchSession: (sid) => (ctx.get('nanomuseRooms') as { isBatch?(id: string): boolean } | undefined)?.isBatch?.(sid) === true,
+        acceptsSession: (sid) => sync.acceptsChatTask(sid),
         claim: async (key, sid) => {
           if (this.state.chatTaskReceipts?.[key]) throw new HubError('duplicate_task', 'this message was already dispatched; read its result in the original chat')
           this.state.chatTaskReceipts = { ...this.state.chatTaskReceipts, [key]: sid }

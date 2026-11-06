@@ -19,6 +19,7 @@ async function setup() {
   const options = {
     state: () => ({ accountId, signedIn: Boolean(accountId), sync: sync.state, taskSessions: Object.values(taskSessions), archived }),
     active: () => sync.active(), pull: () => sync.pull(),
+    acceptsSession: sid => sync.acceptsChatTask(sid),
     line: (sid, mid) => sessions.remote(sid).find(line => line.mid === mid),
     claim: async (key, sid) => {
       if (receipts.has(key)) throw Object.assign(new Error('duplicate'), { code: 'duplicate_task' })
@@ -79,7 +80,7 @@ test('task.chat keeps A/B separate, reuses history, preserves manual sync and re
 })
 
 test('task.chat refuses missing routes, wrong callers, excluded chats and account changes without fallback', async () => {
-  for (const kind of ['missing', 'wrong-caller', 'side-off', 'task-session', 'batch-session', 'archived', 'account', 'missing-message']) {
+  for (const kind of ['missing', 'wrong-caller', 'side-off', 'task-session', 'batch-session', 'quarantined', 'archived', 'account', 'missing-message']) {
     const f = await setup()
     try {
       const args = { cid: 'cid-a', mid: f.midA, text: 'do it' }
@@ -88,6 +89,7 @@ test('task.chat refuses missing routes, wrong callers, excluded chats and accoun
       if (kind === 'side-off') f.sync.state.sideChats = false
       if (kind === 'task-session') f.taskSessions['old-task'] = f.sid('cid-a')
       if (kind === 'batch-session') f.options.isBatchSession = sid => sid === f.sid('cid-a')
+      if (kind === 'quarantined') f.sync.syncs = () => false
       if (kind === 'archived') f.archive(f.sid('cid-a'))
       if (kind === 'account') f.switchAccount('other-account')
       if (kind === 'missing-message') args.mid = 'missing'
@@ -112,8 +114,8 @@ test('task.chat refuses a busy agent and a failed durable claim before executing
   } finally { f.done() }
 })
 
-test('Stop, shutdown or an account switch during the durable claim cannot start a task afterwards', async () => {
-  for (const change of ['stop', 'shutdown', 'account']) {
+test('Stop, shutdown, an account switch or quarantine during the durable claim prevents execution', async () => {
+  for (const change of ['stop', 'shutdown', 'account', 'quarantine']) {
     const f = await setup()
     try {
       let release, writing = false
@@ -124,7 +126,8 @@ test('Stop, shutdown or an account switch during the durable claim cannot start 
       await until(() => writing)
       if (change === 'stop') assert.deepEqual(await f.r.stop({ call: call.id }, fakeCall('stop')), { stopped: true })
       else if (change === 'shutdown') f.done()
-      else f.switchAccount('other-account')
+      else if (change === 'account') f.switchAccount('other-account')
+      else f.sync.syncs = () => false
       release(); await rejected
       assert.equal(f.h.agents.get(f.sid('cid-a')).sent.length, 0)
       assert.equal(f.h.agents.get(f.sid('cid-a')).cancelled.length, 0, 'a reserved task must not cancel other work before it starts')

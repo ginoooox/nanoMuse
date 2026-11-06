@@ -9,6 +9,8 @@ export interface ChatTaskOptions {
   pull(): Promise<unknown>
   line(sessionId: string, mid: string): RemoteLine | undefined
   isBatchSession?(sessionId: string): boolean
+  /** Recheck runtime sync gates, including externally quarantined sessions. */
+  acceptsSession?(sessionId: string): boolean
   /** Must atomically reject an existing receipt and durably save before returning. */
   claim(key: string, sessionId: string): Promise<void>
   run(args: Record<string, unknown>, call: IncomingCall, sessionId: string, claim: () => Promise<void>): Promise<Record<string, unknown>>
@@ -30,7 +32,7 @@ export class ChatTasks {
       const matches = Object.entries(sync.cids).filter(([sid, c]) => c === cid && sync.owners[sid] === accountId)
       if (matches.length !== 1) throw new HubError('no_session', 'the conversation has no unique local session')
       const sid = matches[0]![0]
-      if ((!sync.sideChats && sid !== sync.mainSession) || s.taskSessions.includes(sid) || this.options.isBatchSession?.(sid) || s.archived.includes(sid) || sync.toArchive.includes(sid)) throw new HubError('sync_required', 'the target chat is excluded from ordinary sync')
+      if ((!sync.sideChats && sid !== sync.mainSession) || s.taskSessions.includes(sid) || this.options.isBatchSession?.(sid) || this.options.acceptsSession?.(sid) === false || s.archived.includes(sid) || sync.toArchive.includes(sid)) throw new HubError('sync_required', 'the target chat is excluded from ordinary sync')
       const line = this.options.line(sid, mid)
       if (!line || line.role !== 'user' || line.device !== call.from.id || sync.hidden.includes(mid)) throw new HubError('message_missing', 'the original caller message has not reached this chat')
       return sid

@@ -267,6 +267,7 @@ Ours, in `NanoMuse/`:
   chat with its history and settings. Chat A and chat B stay separate without additional
   `From iPhone` task chats. Ordinary conversation sync remains on, including manual desktop
   turns after the task. Hub and sync deliver the final answer under the same message id.
+  The target rechecks runtime sync exclusions before execution, including session quarantine.
   Side chats require side-chat sync on both devices; an older target must be updated. Phone
   targets retain the existing `task` action. See [hub.md](hub.md) for errors and replay handling.
   The iPhone adds no local deadline to an `@device` task: it waits for the result, Stop,

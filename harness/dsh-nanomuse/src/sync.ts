@@ -971,6 +971,11 @@ export class SyncEngine {
     return Object.values(this.state.pulled).includes(sessionId)
   }
 
+  /** The task router must observe the same runtime gate as ordinary sync. */
+  acceptsChatTask(sessionId: string): boolean {
+    return this.syncs(sessionId)
+  }
+
   /** Whether a session's turns go up: not another device's task, not a batch of the rooms', not another account's (C10), and a side chat only when the switch is on (C9). */
   private syncs(sessionId: string): boolean {
     if (this.options.isTaskSession?.(sessionId)) return false
