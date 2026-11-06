@@ -55,7 +55,7 @@ jobs:
 
       - name: Native dependency cache
         id: deps-cache
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             android/deps/libs
@@ -63,7 +63,7 @@ jobs:
             android/deps/resources
             android/deps/frameworks
             android/deps/lame-build
-          key: ios-deps-${{ runner.os }}-${{ runner.arch }}-${{ steps.ish.outputs.rev }}-${{ hashFiles('android/deps/*.sh', 'android/deps/ffmpeg-patch/**', 'android/deps/rclone-mobile/**') }}
+          key: ios-personal-deps-${{ runner.os }}-${{ runner.arch }}-${{ steps.ish.outputs.rev }}-${{ hashFiles('scripts/ios/*.sh', 'android/deps/*.sh', 'android/deps/ffmpeg-patch/**', 'android/deps/rclone-mobile/**') }}
 
       - name: Build native dependencies
         if: steps.deps-cache.outputs.cache-hit != 'true'
@@ -72,8 +72,20 @@ jobs:
           ./deps/build_lame.sh
           ./deps/build_ffmpeg.sh
           ./deps/build_ish.sh
-          ./deps/prepare_alpine_rootfs.sh
+          bash ../scripts/ios/prepare-rootfs-host.sh
           ./deps/build_rclone_ios.sh
+
+      - name: Save completed native dependencies
+        if: steps.deps-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            android/deps/libs
+            android/deps/include
+            android/deps/resources
+            android/deps/frameworks
+            android/deps/lame-build
+          key: ${{ steps.deps-cache.outputs.cache-primary-key }}
 
       - name: Build personal device app
         working-directory: android/src/ios
