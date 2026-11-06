@@ -1,6 +1,183 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Turn on conversation sync and side chat sync on both devices before asking in this chat." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Turn on conversation sync and side chat sync on both devices before asking in this chat."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bitte aktiviere auf beiden Geräten die Synchronisierung von Unterhaltungen und Nebenchats, bevor du in diesem Chat eine Aufgabe erteilst."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Activa la sincronización de conversaciones y chats secundarios en ambos dispositivos antes de pedir una tarea en este chat."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Activez la synchronisation des conversations et des discussions secondaires sur les deux appareils avant de demander une tâche ici."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このチャットで依頼する前に、両方のデバイスで会話の同期とサイドチャットの同期を有効にしてください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 채팅에서 작업을 요청하기 전에 두 기기에서 대화 동기화와 보조 채팅 동기화를 켜세요."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Прежде чем поручать задачу в этом чате, включите синхронизацию разговоров и дополнительных чатов на обоих устройствах."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请先在两台设备上开启对话同步和旁聊同步，再在此会话中指派任务。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "請先在兩台裝置上開啟對話同步和旁聊同步，再在此對話中指派任務。"
+          }
+        }
+      }
+    },
+    "Could not sync this message. Try again when both devices are online." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Could not sync this message. Try again when both devices are online."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diese Nachricht konnte nicht synchronisiert werden. Versuche es erneut, wenn beide Geräte online sind."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se pudo sincronizar este mensaje. Inténtalo cuando ambos dispositivos estén conectados."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ce message n’a pas pu être synchronisé. Réessayez lorsque les deux appareils sont en ligne."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このメッセージを同期できませんでした。両方のデバイスがオンラインのときに再試行してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 메시지를 동기화하지 못했습니다. 두 기기가 모두 온라인일 때 다시 시도하세요."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не удалось синхронизировать сообщение. Попробуйте снова, когда оба устройства будут в сети."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这条消息未能同步，请在两台设备都在线时重试。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "這則訊息未能同步，請在兩台裝置都在線時重試。"
+          }
+        }
+      }
+    },
+    "That message was already dispatched. Check this chat for its result." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "That message was already dispatched. Check this chat for its result."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diese Nachricht wurde bereits als Aufgabe gesendet. Das Ergebnis findest du in diesem Chat."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ese mensaje ya se envió como tarea. Consulta el resultado en este chat."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ce message a déjà été envoyé comme tâche. Consultez son résultat dans cette discussion."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このメッセージはすでに依頼として送信されています。このチャットで結果を確認してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 메시지는 이미 작업으로 전송되었습니다. 이 채팅에서 결과를 확인하세요."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Это сообщение уже отправлено как задача. Посмотрите результат в этом чате."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这条消息已派发，请在本会话中查看结果。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "這則訊息已派發，請在本對話中查看結果。"
+          }
+        }
+      }
+    },
     "" : {
 
     },

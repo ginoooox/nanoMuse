@@ -121,6 +121,12 @@ extension AIChatViewModel {
 
     /// Into the history and the store, after the session exists: rows the chat already shows.
     func nmRecord(_ agentMessages: [AgentMessage]) async {
+        _ = await nmRecordIDs(agentMessages)
+    }
+
+    /// The stored ids, for an explicit remote task to identify its original user message.
+    func nmRecordIDs(_ agentMessages: [AgentMessage]) async -> [String] {
+        var ids: [String] = []
         let before = nmSessionKey
         await ensureSession()
         if before != nmSessionKey { nmRebind(from: before, to: nmSessionKey) }
@@ -130,8 +136,10 @@ extension AIChatViewModel {
             if let id = await persistAgentMessage(m), idx < agentHistory.count {
                 m.dbMessageId = id
                 agentHistory[idx].dbMessageId = id
+                ids.append(id.lowercased())
             }
         }
+        return ids
     }
 
     /// Put words in the composer without sending ("Change your avatar to ").

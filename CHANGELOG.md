@@ -4,7 +4,6 @@ All notable changes to nanoMuse. The format follows [Keep a Changelog](https://k
 
 ## [Unreleased]
 
-
 ### Cloud
 
 - Restored the default for invalid numeric preferences saved by the admin console, including blank values.
@@ -125,6 +124,12 @@ All notable changes to nanoMuse. The format follows [Keep a Changelog](https://k
 - **Made Android summaries preserve the current task separately from completed work.** Summaries without an active task no longer describe historical requests as work to resume. Summary streams now stop after 120 seconds without activity, within a 900-second overall deadline; stopping the turn cancels the request. Qwen3.8-Max summary requests explicitly disable thinking under the default rules, and context notices follow the app language. For [#719](https://github.com/nano-muse/nanoMuse/issues/719).
 
 ### iOS
+
+- Added a separate unsigned Personal IPA workflow for local free-account signing, with app-local storage and without Apple cloud entitlements or embedded extensions.
+
+- iPhone device mentions continued the corresponding synced desktop chat using its conversation and message ids, kept later manual turns syncing, and merged Hub and synced answers under one message id. Desktop targets required the new `task.chat` action.
+
+- Removed the iPhone's local deadline for tasks sent with `@device`. Stop, disconnection and remote errors still ended the wait; relay and target task limits still applied.
 
 - **A task sent with `@<device>` no longer answers 「完成」 when nothing came back.** An `@Mac …` line whose task did not run showed *Done*, as if the work had happened; it now says the device finished without an answer, and the steps above it say what did happen. ([#718](https://github.com/nano-muse/nanoMuse/issues/718))
 - **Kept System Auto reply speech on the chosen language-specific voice.** An inactive concrete voice later in the Voice Output group no longer overrides Auto. A concrete System voice explicitly selected for Voice Output still takes priority. For [#722](https://github.com/nano-muse/nanoMuse/issues/722).

@@ -3,8 +3,9 @@
  * the runtime's `task` action (`docs/hub.md`), so the phone's `delegate` lands
  * here exactly as it lands on a runtime.
  *
- * One session per asking device and conversation, titled "From <device>", kept
- * for the next task from the same place. The call streams the run back as
+ * Legacy tasks keep one session per asking device and conversation, titled
+ * "From <device>". Explicit task.chat requests reuse an ordinary synced chat.
+ * The call streams the run back as
  * `event` frames in the runtime's vocabulary — `tool`, `tool_result`, `text`
  * (interim), `approval`, `approval_result` — and resolves with the final answer.
  * An asker that sends `stream: true` draws a `text` in place of the text since the
@@ -24,6 +25,7 @@ import type { Session, SessionEvent, SessionId } from '@deepseek-ai/dsh-session'
 import type {} from '@deepseek-ai/dsh-api-session-controller'
 import type { SessionCreateRequest } from '@deepseek-ai/dsh-api-session-controller/types'
 import { HubError, type Caller, type IncomingCall } from './hub.ts'
+import { deriveMid } from './sync.ts'
 
 /** The runtime's TASK_TIMEOUT_S: a task may run this long before the hub gives up on it. */
 export const TASK_TIMEOUT_MS = 15 * 60_000
@@ -49,6 +51,11 @@ interface Run {
   streamed: string
   streamTimer?: ReturnType<typeof setTimeout> | undefined
   final: string
+  finalId?: string
+  finalAt?: number
+  inChat?: boolean
+  started?: boolean
+  cancelled?: boolean
   resolve(text: string): void
   reject(error: HubError): void
 }
@@ -154,7 +161,10 @@ export class TaskRunner {
       offEvents()
       offApproval()
       offStream()
-      for (const run of [...this.byCall.values()]) run.reject(new HubError('failed', 'this computer stopped taking tasks'))
+      for (const run of [...this.byCall.values()]) {
+        run.cancelled = true
+        run.reject(new HubError('failed', 'this computer stopped taking tasks'))
+      }
     }
   }
 
@@ -175,6 +185,19 @@ export class TaskRunner {
     const from = call.from
     const conversation = String(args.conversation ?? '').trim() || from.id || 'device'
     const sessionId = await this.sessionFor(from, conversation)
+    return this.run(args, call, sessionId, conversation)
+  }
+
+  /** Run in an already synced chat, without creating or classifying a task session. */
+  async taskInChat(args: Record<string, unknown>, call: IncomingCall, sessionId: string, deviceId: string, claim: () => Promise<void>): Promise<Record<string, unknown>> {
+    return this.run(args, call, sessionId as SessionId, String(args.cid), { deviceId, claim })
+  }
+
+  private async run(args: Record<string, unknown>, call: IncomingCall, sessionId: SessionId, conversation: string, chat?: { deviceId: string; claim(): Promise<void> }): Promise<Record<string, unknown>> {
+    if (this.options.closed?.()) throw new HubError('busy', 'this computer is ending its work; ask again in a moment')
+    const text = String(args.text ?? '').trim()
+    if (!text) throw new HubError('usage', 'text is required')
+    const from = call.from
     const resolved = await this.ctx.sessionController.resolveAgent(sessionId)
     if ('error' in resolved) throw new HubError('failed', `the session could not be opened: ${String(resolved.error)}`)
     const agent = resolved.agent
@@ -187,19 +210,36 @@ export class TaskRunner {
       reject = rej
     })
     const stream = args.stream === true || args.stream === 'true'
-    const run: Run = { callId: call.id, call, sessionId, agent, tools: new Map(), approvals: new Set(), stream, streamed: '', final: '', resolve, reject }
+    const run: Run = { callId: call.id, call, sessionId, agent, tools: new Map(), approvals: new Set(), stream, streamed: '', final: '', inChat: Boolean(chat), resolve, reject }
+    // A Stop or service shutdown can settle this while the durable claim is still writing.
+    void settled.catch(() => undefined)
     this.bySession.set(sessionId, run)
     this.byCall.set(call.id, run)
     const timer = setTimeout(() => {
-      agent.cancel({ kind: 'hook', reason: 'nanomuse: the task took longer than the hub allows' })
+      run.cancelled = true
+      if (run.started) agent.cancel({ kind: 'hook', reason: 'nanomuse: the task took longer than the hub allows' })
       run.reject(new HubError('timeout', 'the task took longer than the hub allows'))
     }, TASK_TIMEOUT_MS)
     this.options.log('info', `nanomuse task: ${from.name || from.id} asked: ${text.replace(/\s+/g, ' ').slice(0, 80)}`)
     this.options.notice?.(from.name || from.id, text.replace(/\s+/g, ' ').slice(0, 120))
     try {
+      // Reserve the session before the durable claim yields. A replay never executes twice.
+      await chat?.claim()
+      if (run.cancelled) throw new HubError('failed', 'the task was stopped before execution')
+      if (this.options.closed?.() || agent.status !== 'idle') throw new HubError('busy', 'this conversation is already busy')
       this.options.began?.(String(sessionId))
-      agent.followup(createUserMessage({ content: [{ type: 'text', text: frame(from.name || from.id, this.options.deviceName(), text) }], source: { kind: 'user' } }))
+      // The person's original message is already a remote bubble. This is an execution
+      // instruction for the model, excluded from ordinary prompts and from sync uploads.
+      const source = chat
+        ? { kind: 'nanomuse-sync' as const, role: 'user' as const, mid: '', device: from.id, deviceName: from.name, at: Date.now() }
+        : { kind: 'user' as const }
+      run.started = true
+      agent.followup(createUserMessage({ content: [{ type: 'text', text: frame(from.name || from.id, this.options.deviceName(), text) }], source }))
       const final = await settled
+      if (chat) {
+        return { text: final, cid: conversation, thread: sessionId, device: this.options.deviceName(),
+          mid: run.finalId ? deriveMid(chat.deviceId, sessionId, run.finalId) : '', created_at: Math.floor((run.finalAt ?? Date.now()) / 1000) }
+      }
       return { text: final, conversation, thread: sessionId, device: this.options.deviceName() }
     } finally {
       clearTimeout(timer)
@@ -227,7 +267,8 @@ export class TaskRunner {
       }
     }
     if (!run) return { stopped: false }
-    run.agent.cancel({ kind: 'user' })
+    run.cancelled = true
+    if (run.started) run.agent.cancel({ kind: 'user' })
     return { stopped: true }
   }
 
@@ -285,7 +326,7 @@ export class TaskRunner {
 
   private onEvent(session: Session, event: SessionEvent): void {
     const run = this.bySession.get(session.id)
-    if (!run) return
+    if (!run?.started) return
     // The stored message, a tool call or the turn's end overtakes the live text: nothing
     // partial may land after it. Other events (a retry notice, a header) leave it running.
     if (STREAM_CUTTERS.has(event.type)) cutStream(run)
@@ -309,9 +350,12 @@ export class TaskRunner {
         return
       }
       case 'assistant/message': {
+        if (run.inChat && event.data.interrupted === true) return
         const text = textOf(event.data.message.content)
         if (!text) return
         run.final = text
+        run.finalId = String(event.data.message.id ?? `a${event.seq}`)
+        run.finalAt = event.time
         if (event.data.interrupted !== true) run.call.event({ stage: 'text', text, interim: true })
         return
       }
@@ -343,7 +387,7 @@ export class TaskRunner {
   /** A live model-stream frame: an attempt starts its text afresh, a text delta extends it. */
   private onStream(sessionId: SessionId, frame: AssistantStreamFrame): void {
     const run = this.bySession.get(sessionId)
-    if (!run?.stream) return
+    if (!run?.started || !run.stream) return
     if (frame.type !== 'chunk') {
       cutStream(run)
       return
@@ -358,7 +402,7 @@ export class TaskRunner {
 
   private async onApproval(req: ApprovalRequestEvent, next: () => Promise<ApprovalOutcome>): Promise<ApprovalOutcome> {
     const run = req.agent ? this.bySession.get(req.agent.id) : undefined
-    if (!run) return next()
+    if (!run?.started) return next()
     this.approvalSeq += 1
     const id = `ap_${Date.now().toString(36)}${this.approvalSeq.toString(36)}`
     const tool = req.callId ? run.tools.get(String(req.callId)) : undefined

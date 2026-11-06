@@ -216,10 +216,17 @@ scripts/gen-ios-icons.py         App 图标和四款备选图标，来自 assets
   **Reach**（`NanoMuseReach.swift`）：账号下每台设备一个面板（打开链接、发一条便条、
   跑一行 shell、截一张图），都通过 hub。
   **交给另一台设备的任务**（`NanoMuseDeviceMention.swift`、`NanoMuseRemoteApproval.swift`）：
-  以 `@〈设备〉` 开头的消息作为 hub 的 `task` 发给那台设备的 Muse（消息开头打 `@` 时，菜单在文件
+  以 `@〈设备〉` 开头的消息发给那台设备的 Muse（消息开头打 `@` 时，菜单在文件
   上方列出在线的设备）。运行期间回复就在聊天里画出来（`NanoMuseDeviceReply.swift`）：先是「〈设备〉正在处理…」，
   每一步是一个胶囊，那边 Muse 说的话来一段显示一段，最后答案就在原处；这期间聊天处于忙碌状态，停止按钮
-  也会让那台设备停下，期间排队的消息在它结束后发出。超时或断网时，未完成的步骤显示失败；
+  也会让那台设备停下，期间排队的消息在它结束后发出。
+  桌面版和无界面 dsh 目标需要宣告 `task.chat`。手机先同步原始消息，再发送它的 `cid` 和 `mid`，
+  目标设备接续对应普通会话的历史和设置。会话 A 和 B 分别执行，不再额外建立 `From iPhone` 任务会话。
+  普通对话同步继续生效，任务结束后电脑手动发送的消息和回复也会同步。Hub 回传答案和会话同步使用同一消息 id。
+  旁聊需要两端都开启旁聊同步；旧版目标需要更新。手机目标保留原来的 `task` 动作。
+  错误和重复派发的处理见 [hub.md](hub.md)。iPhone 不再给 `@设备` 任务增加本地等待时限，
+  会等待结果、停止、断线或远端错误。中继和目标设备仍有各自的限制，仅移除手机计时器不能突破这些限制，
+  也不能让 App 在 iOS 后台持续运行。超时或断网时，未完成的步骤显示失败；
   停止时显示已取消。即使收到最终答案，也只有收到步骤结果才会显示成功。那边有一步需要点头时，
   `approval` 事件在这里、在输入任务的地方回答（[hub.md](hub.md)），卡片上是 Android 手机的
   四个答案：*允许一次*、*在这个聊天里允许*（为那个聊天记在内存里）、*在 〈设备〉 上始终允许
@@ -637,6 +644,25 @@ open src/ios/Minis.xcodeproj
 `NanoMuse/NanoMuseChatModifiers.swift`（`NanoMuseChatHooks`、`NanoMuseComposerHost`）里：
 往那里加，或者加第三个修饰符，只占一环。输入区那一叠在那里故意用了 `AnyView`。
 `MinisTests/NanoMuseRound6Tests.swift` 测量 body 值的大小和类型深度，任一超过上限就失败。
+
+## 没有 Mac 时的个人安装 {#personal-installation-without-a-mac}
+
+在自己的 GitHub 副本中，从 Actions 手动运行 **iOS · Personal IPA**。它使用 GitHub
+的 macOS 环境编译，不需要 Apple 签名凭据。完成后下载 `nanoMuse-Personal-unsigned-*`
+产物，其中包含 IPA、SHA-256 校验文件和记录源码提交的清单。在 Windows 上使用
+[Sideloadly](https://sideloadly.io/) 等工具，以自己的 Apple 账号签名安装。免费账号安装
+的 App 通常七天后到期，需要续签。Apple 密码不需要放进 GitHub Secrets。
+
+测试版名为 **nanoMuse Personal**，使用独立的 Bundle ID 和 URL 协议。保留已安装的
+原版。测试版有自己的本地数据，需要重新登录 nanoMuse Cloud 同步账号下的会话。
+后续更新保持测试版 Bundle ID 一致。普通会话接续的 `@` 功能还需要更新目标端插件。
+
+工作流使用 `scripts/ios/Personal.xcconfig` 和 `package-personal.py`：
+`NANOMUSE_PERSONAL` 编译条件让文件保存在 App 自身目录，停用 Apple iCloud 的启动
+流程并隐藏其设置入口；打包时去掉分享、文件提供器、小组件扩展，以及旧签名和描述文件。
+这个版本不支持 Apple iCloud、App Group 共享及需要相应授权的 Apple 工具。nanoMuse Cloud
+登录、会话同步和设备通信依赖中继，仍然保留。第三方 OAuth 回调及其他可选集成还需要
+真机测试。编译打包成功后，仍需验证免费签名、安装及当前 iOS 版本下的运行情况。
 
 ## TestFlight {#testflight}
 

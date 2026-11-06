@@ -27,6 +27,7 @@ final class NanoMuseDeviceReply {
     /// The person pressed stop here.
     private(set) var stopped = false
     private var finished = false
+    var route: NanoMuseSync.TaskRoute?
     private let vm: AIChatViewModel
     private let message: ChatMessage
     /// "Mac is working…", then "Mac answered:" (removed when there is no answer).
@@ -88,7 +89,7 @@ final class NanoMuseDeviceReply {
 
     /// The task is over. `header` nil drops the header line (a failure, a stop); `replacing` puts
     /// `answer` over the text since the last step (that text is the answer as it was coming in).
-    func finish(header title: String?, answer: String, replacing: Bool, completion: Completion) async {
+    func finish(header title: String?, answer: String, replacing: Bool, completion: Completion, syncedReply: [String: Any]? = nil) async {
         guard !finished else { return }
         finished = true
         if Self.running[ObjectIdentifier(vm)] === self { Self.running[ObjectIdentifier(vm)] = nil }
@@ -107,11 +108,19 @@ final class NanoMuseDeviceReply {
         vm.publishUnlessTransitioning()
         vm.scrollToBottomSignal.send()
         let record = message.blocks.filter { $0.kind == .text && !$0.content.isEmpty }.map(\.content).joined(separator: "\n\n")
-        await vm.nmRecord([AgentMessage(role: .assistant, parts: [.text(record)])])
+        if syncedReply == nil { await vm.nmRecord([AgentMessage(role: .assistant, parts: [.text(record)])]) }
         // A stop has ended the turn already (and `cancel` sent what was queued on), and a new
         // turn may be running by now.
         guard !stopped else { return }
         vm.isProcessing = false
+        if let syncedReply, let route {
+            let written = await NanoMuseSync.shared.acceptTaskReply(syncedReply, route: route, device: device)
+            if written, vm.sessionId == route.sessionId {
+                // Keep the live answer until the guarded reload replaces the whole transcript.
+                await vm.reloadMessagesFromDB(reason: "nanoMuseTaskReply", force: true)
+            }
+            NanoMuseSync.shared.pull()
+        }
         sendQueued()
     }
 

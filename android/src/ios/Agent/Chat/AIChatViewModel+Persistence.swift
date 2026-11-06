@@ -21,7 +21,7 @@ extension AIChatViewModel {
         return hasher.finalize()
     }
 
-    func reloadMessagesFromDB(reason: String = "unspecified") async {
+    func reloadMessagesFromDB(reason: String = "unspecified", force: Bool = false) async { // nanoMuse: replace a transient Hub answer after merging its canonical sync row
         guard let sessionId else {
             logger.info("[ReloadTrace] skip reason=\(reason) sid=nil")
             return
@@ -105,7 +105,7 @@ extension AIChatViewModel {
         // (id, sortOrder) pairs and compare against the last seen.
         let hash = Self.computeOrderHash(of: dbMessages)
         let hasReorderedMessages = hash != lastKnownDbOrderHash && lastKnownDbOrderHash != 0
-        if hasNewMessages || wasEmptyNowHasMessages || hasRemovedMessages || hasReorderedMessages {
+        if force || hasNewMessages || wasEmptyNowHasMessages || hasRemovedMessages || hasReorderedMessages { // nanoMuse: explicit task merge also refreshes when another reload advanced the baseline
             let branch: String
             if hasRemovedMessages { branch = "hasRemovedMessages" }
             else if hasReorderedMessages { branch = "hasReorderedMessages" }

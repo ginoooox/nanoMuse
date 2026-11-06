@@ -141,13 +141,15 @@ struct NanoMuseSettingsHomeView: View {
                 NanoMuseLinkRow(title: AppLocalized("Background & notifications")) { NanoMuseBackgroundView() }
                 NanoMuseRowDivider()
                 NanoMuseLinkRow(title: AppLocalized("Storage")) { StorageManagementView() }
-                NanoMuseRowDivider()
-                NanoMuseLinkRow(title: AppLocalized("Shared Folders")) { SharedFoldersSettingsView() }
+                if NanoMusePersonalBuild.supportsExtensions {
+                    NanoMuseRowDivider()
+                    NanoMuseLinkRow(title: AppLocalized("Shared Folders")) { SharedFoldersSettingsView() }
+                }
             }
             Group {
                 NanoMuseRowDivider()
                 NanoMuseLinkRow(title: AppLocalized("Mount External Folders")) { MountedFoldersSettingsView() }
-                if #available(iOS 17.0, *) {
+                if #available(iOS 17.0, *), NanoMusePersonalBuild.supportsAppleCloud {
                     NanoMuseRowDivider()
                     NanoMuseLinkRow(title: AppLocalized("iCloud Sync")) { CloudSyncSettingsV2View() }
                 }

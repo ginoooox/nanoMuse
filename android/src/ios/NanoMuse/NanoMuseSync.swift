@@ -214,6 +214,64 @@ final class NanoMuseSync: ObservableObject {
         return store.entries[sessionId]?.cid
     }
 
+    struct TaskRoute {
+        let account: String
+        let sessionId: String
+        let cid: String
+        let mid: String
+    }
+
+    /// A task is dispatched only after its original line is acknowledged by conversation sync.
+    /// In particular, a new main chat must adopt the account's cid before it is sent.
+    func prepareTask(sessionId: String, mid: String) async throws -> TaskRoute {
+        load()
+        let account = accountKey
+        guard active, !account.isEmpty, shows(sessionId) else { throw HubError(code: "sync_required", message: "") }
+        func waitForTransfers() async throws {
+            let deadline = Date().addingTimeInterval(30)
+            while pulling || pushing {
+                guard active, accountKey == account, Date() < deadline else { throw HubError(code: "message_missing", message: "") }
+                try await Task.sleep(nanoseconds: 50_000_000)
+            }
+            guard active, accountKey == account, store.account == account else { throw HubError(code: "sync_required", message: "") }
+        }
+        try await waitForTransfers()
+        pull()
+        try await waitForTransfers()
+        guard store.pulled else { throw HubError(code: "message_missing", message: "") }
+        // A main_exists response remaps the cid and schedules another push. Complete it here.
+        for _ in 0..<2 {
+            push()
+            try await waitForTransfers()
+            if let entry = store.entries[sessionId], entry.knownMids.contains(mid.lowercased()) {
+                guard Self.takes(kind: entry.kind, sideChats: sideChats) else { throw HubError(code: "sync_required", message: "") }
+                return TaskRoute(account: account, sessionId: sessionId, cid: entry.cid, mid: mid.lowercased())
+            }
+        }
+        throw HubError(code: "message_missing", message: "")
+    }
+
+    /// Hub and sync deliver the same target-authored message id. Merge it as a remote row,
+    /// so it is neither uploaded by this phone nor inserted twice when sync catches up.
+    func acceptTaskReply(_ reply: [String: Any], route: TaskRoute, device: HubDevice) async -> Bool {
+        load()
+        guard accountKey == route.account, store.account == route.account,
+              store.entries[route.sessionId]?.cid == route.cid,
+              (reply["cid"] as? String) == route.cid,
+              let mid = reply["mid"] as? String, !mid.isEmpty,
+              let text = reply["text"] as? String, !text.isEmpty else { return false }
+        let key = mid.lowercased()
+        if store.entries[route.sessionId]?.knownMids.contains(key) == true { return true }
+        let pending = Pending(mid: key, cid: route.cid, role: "assistant", text: text,
+                              createdAt: (reply["created_at"] as? Int) ?? Int(Date().timeIntervalSince1970), deviceName: device.name)
+        let written = await insert(pending, into: route.sessionId)
+        guard accountKey == route.account, store.account == route.account,
+              store.entries[route.sessionId]?.cid == route.cid else { return false }
+        save()
+        if written { revision += 1 }
+        return written
+    }
+
     /// Whether a conversation of `kind` is this device's business under the switch.
     nonisolated static func takes(kind: String, sideChats: Bool) -> Bool {
         kind == "main" || sideChats
@@ -977,6 +1035,8 @@ final class NanoMuseSync: ObservableObject {
     /// end). While that chat runs a turn here the store refuses — the row waits in `deferred` and
     /// `turnFinished` / the next pull write it. Returns true when the row is in the database.
     private func insert(_ pending: Pending, into sessionId: String) async -> Bool {
+        let account = store.account
+        guard store.entries[sessionId]?.cid == pending.cid else { return false }
         if SessionActivityTracker.isActiveThreadSafe(sessionId) {
             if !store.deferred.contains(where: { $0.mid == pending.mid }) { store.deferred.append(pending) }
             return false
@@ -988,6 +1048,10 @@ final class NanoMuseSync: ObservableObject {
             reasoningContent: nil, streamInterruptCount: 0
         )
         await ChatStore.shared.nmTouchSession(sessionId)
+        // Database work can yield while the person switches accounts. Never mark the new
+        // account's table with a row belonging to the previous account and conversation.
+        guard store.account == account, accountKey == account,
+              store.entries[sessionId]?.cid == pending.cid else { return false }
         store.entries[sessionId]?.knownMids.insert(pending.mid)
         store.remoteMids[pending.mid] = pending.deviceName
         store.deferred.removeAll { $0.mid == pending.mid }

@@ -51,6 +51,7 @@ import { cloudOffFailure, relayFailure, transportFailure, type RelayRefusal } fr
 import { Relay, RelayError, type Account, type Estimate, type Invite, type ProfileWrite, type RelayModel, type SignIn } from './relay.ts'
 import { homeWorkspace } from './home.ts'
 import { TaskRunner, textOf } from './task.ts'
+import { ChatTasks } from './chat-task.ts'
 import { Turns, aggregateWork, type WorkItem } from './work.ts'
 import { SCREEN_RUN_IDLE_MS, ScreenRuns, Trajectory, type ScreenRun, type StepAction, type TrajectoryView } from './trajectory.ts'
 import { describeCall } from './steps.ts'
@@ -421,6 +422,8 @@ interface State {
   trusted?: Record<string, { name: string; at: number }>
   /** The session each other device's conversation lives in (`<device id>\n<conversation>` → session id). */
   taskSessions?: Record<string, string>
+  /** Durable at-most-once receipts for task.chat, scoped by account, cid and original mid. */
+  chatTaskReceipts?: Record<string, string>
   /** Conversations synced between the account's devices (C7, C8): the cursor, the ids, what the relay knows. */
   sync?: SyncState
   /** The hands model the person chose; absent means the account's default. */
@@ -1021,6 +1024,24 @@ export default class NanomuseCloud extends Service {
         log: (level, text) => this.ctx.logger[level](text),
       })
       this.sync = sync
+      const chatTasks = new ChatTasks({
+        state: () => ({ accountId: this.state.account?.id ?? '', signedIn: Boolean(this.state.account), sync: sync.state,
+          taskSessions: Object.values(this.state.taskSessions ?? {}), archived: ctx.get('workspaceRegistry')?.archivedSessionIds ?? [] }),
+        active: () => sync.active(),
+        pull: () => sync.pull(),
+        line: (sid, mid) => kept.linesOf(sid).find((line) => line.mid === mid),
+        isBatchSession: (sid) => (ctx.get('nanomuseRooms') as { isBatch?(id: string): boolean } | undefined)?.isBatch?.(sid) === true,
+        claim: async (key, sid) => {
+          if (this.state.chatTaskReceipts?.[key]) throw new HubError('duplicate_task', 'this message was already dispatched; read its result in the original chat')
+          this.state.chatTaskReceipts = { ...this.state.chatTaskReceipts, [key]: sid }
+          await this.writeState()
+        },
+        run: (args, call, sid, claim) => runner.taskInChat(args, call, sid, this.state.deviceId ?? '', claim),
+      })
+      ctx.effect(() => this.hub.handle('task.chat', async (args, call) => {
+        await this.permit(call.from, 'task', brief('task', args))
+        return chatTasks.task(args, call)
+      }), 'nanomuse cloud: task in synced chat')
       ctx.effect(
         () =>
           ctx.on('session/event', (session: Session, event: SessionEvent) => {
@@ -3677,7 +3698,7 @@ export default class NanomuseCloud extends Service {
    */
   private actions(): string[] {
     const out = [...ACTIONS, ...REMOTE_ACTIONS]
-    if (this.tasks) out.push('approve', 'task', 'stop')
+    if (this.tasks) out.push('approve', 'task', 'stop', 'task.chat')
     out.push(...CODING_ACTIONS)
     return out
   }

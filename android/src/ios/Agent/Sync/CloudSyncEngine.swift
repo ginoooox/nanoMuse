@@ -453,7 +453,7 @@ final class CloudSyncEngine: ObservableObject {
     // MARK: - Start / Stop
 
     func start() async {
-        guard isEnabled else {
+        guard NanoMusePersonalBuild.supportsAppleCloud && isEnabled else { // nanoMuse: no CloudKit in free-account builds.
             syncStatus = .disabled
             return
         }

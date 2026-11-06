@@ -39,7 +39,7 @@ On the computer, in nanoMuse Desktop (or `nanomuse chat` in a terminal):
 In the web console (`/app`): pick a device, type. The task runs on that
 device's Muse; approvals show as cards in the page.
 
-Two kinds of request travel over the hub:
+These requests travel over the hub:
 
 - **Actions.** `info`, `shell`, `files`, `file.get`, `file.put`, `open`,
   `screen`, `notify`. Raw and immediate. A `shell` command is judged *on the
@@ -47,6 +47,24 @@ Two kinds of request travel over the hub:
   phone's ShellGuard, the desktop's `guard.py`): reads and builds go quietly,
   deleting / sending / paying / system commands wait for the approval card on
   the device that asked.
+- **Continue a synced chat.** Desktop and headless dsh targets advertise `task.chat`.
+  `task.chat {text, cid, mid, stream?}` runs in the ordinary local chat mapped to `cid`.
+  The caller first syncs its user message, then supplies that message's `mid`. The target pulls
+  context, verifies the current account, chat scope and message author, and reuses the mapped
+  session. It never records that session in `taskSessions`, renames it or falls back to a
+  per-device task session. A missing mapping or a message not yet synced is an error; a busy
+  chat is `busy`. Both devices need side-chat sync for side chats. Archived chats, task
+  sessions and the rooms' batch sessions cannot be used through this action.
+  The target durably claims `(account, cid, mid)` before execution. Replaying that message,
+  including after restart, returns `duplicate_task`; an interrupted dispatch is inspected in
+  the original chat before the person sends a new message. This is at-most-once dispatch,
+  not automatic recovery of an interrupted run.
+  Events, approvals and `stop {call}` use the existing task protocol. The final result adds
+  `cid`, `mid` and `created_at` to `text`, `thread` and `device`. That answer's `mid` is the
+  exact id used by ordinary sync. The iPhone merges the Hub answer as a remote row and never
+  uploads its live display as a second answer. Later manual desktop turns keep syncing to
+  the same chat. iPhone mentions of desktops require this action; older targets must be updated.
+  The relay forwards it through the existing call frames; no relay protocol change is needed.
 - **Tasks.** `task {text, conversation?, language?, stream?}`: a whole job in words for the target device's own
   Muse, in a conversation of its own (`conversation` names it; the sender's id
   when absent). `language` (runtime 1.0.0, optional) is the BCP-47 tag of the
@@ -78,8 +96,9 @@ Two kinds of request travel over the hub:
   caller that does not ask gets each message once (Android's `nanomuse-pc task` lists every
   `text` as a step); the runtime ignores `stream` for now.
 
-  The runtime and iPhone callers wait up to 15 minutes, matching the desktop and
-  runtime task budget. A local deadline or a `timeout` from the relay makes the caller
+  The runtime caller waits up to 15 minutes, matching the desktop and runtime task
+  budget. The iPhone's `@device` caller adds no local deadline; the relay's 15-minute
+  call limit and the target's task budget still apply. A local deadline or a `timeout` from the relay makes the caller
   send `stop {call}` for the original task, with a separate 15-second cleanup limit.
   Runtime cancellation uses the same exact call id. Cleanup is best effort: a disconnected
   target may not receive it, so the caller keeps the original failure and does not claim

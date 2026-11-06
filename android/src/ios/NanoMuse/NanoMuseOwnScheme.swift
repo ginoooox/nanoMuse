@@ -7,9 +7,17 @@ import Foundation
 /// link arriving from the system is read as its `minis://` form, nothing else changes.
 enum NanoMuseOwnScheme {
     /// What Info.plist registers; what the share extension opens.
+    #if NANOMUSE_PERSONAL
+    static let system = "nanomuse-personal"
+    #else
     static let system = "nanomuse"
+    #endif
     /// The MCP OAuth callback scheme Info.plist registers (the default redirect is a loopback URL).
+    #if NANOMUSE_PERSONAL
+    static let systemMCP = "nanomuse-personal-mcp"
+    #else
     static let systemMCP = "nanomuse-mcp"
+    #endif
     /// Upstream's in-app vocabulary; never registered with the system.
     static let internalScheme = "minis"
 

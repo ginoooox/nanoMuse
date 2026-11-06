@@ -15,9 +15,6 @@
 import Foundation
 
 enum NanoMuseDeviceMention {
-    /// Allow the desktop/runtime target's full task budget before abandoning the call.
-    private static let taskTimeout: TimeInterval = 15 * 60
-
     struct Hit {
         let device: HubDevice
         /// The message without the mention; empty when the mention was all there was.
@@ -86,25 +83,45 @@ enum NanoMuseDeviceMention {
         guard let hit = parse(text) else { return false }
         let device = hit.device
         let task = hit.task.isEmpty ? text : hit.task
-        vm.nmLocalTurn(user: text)
         guard device.online else {
-            vm.nmLocalTurn(assistant: String(format: AppLocalized("%@ is not online right now."), device.name))
+            vm.nmLocalTurn(user: text, assistant: String(format: AppLocalized("%@ is not online right now."), device.name))
             return true
         }
+        let inChat = device.actions.contains("task.chat")
+        // A desktop without task.chat must be updated. Falling back would mix chat contexts.
+        guard inChat || device.isPhone else {
+            vm.nmLocalTurn(user: text, assistant: NanoMuseHubErrors.describe(code: "unknown_action", message: ""))
+            return true
+        }
+        vm.messages.append(ChatMessage(role: .user, content: text))
+        vm.inputText = ""
+        vm.publishUnlessTransitioning()
         let notes = Notes()
-        let sessionId = vm.sessionId ?? vm.draftId ?? "draft"
         let live = NanoMuseDeviceReply(device: device, vm: vm)
         Task { @MainActor in
             do {
+                let ids = await vm.nmRecordIDs([AgentMessage(role: .user, parts: [.text(text)])])
+                let sessionId = vm.sessionId ?? vm.draftId ?? "draft"
+                var args: [String: Any] = ["text": task, "from": NanoMuseHub.shared.name, "language": NanoMuseLocale.tag, "stream": true]
+                if inChat {
+                    guard let mid = ids.first, let sid = vm.sessionId else { throw HubError(code: "message_missing", message: "") }
+                    let route = try await NanoMuseSync.shared.prepareTask(sessionId: sid, mid: mid)
+                    live.route = route
+                    args["cid"] = route.cid
+                    args["mid"] = route.mid
+                }
+                guard !live.stopped else { throw HubError(code: "failed", message: "") }
                 let reply = try await NanoMuseHub.shared.call(
                     to: device.id,
-                    action: "task",
+                    action: inChat ? "task.chat" : "task",
                     // `language` (runtime 1.0.0, docs/hub.md): the Muse over there answers in
                     // this phone's language instead of guessing from the text; older runtimes ignore it.
                     // `stream`: the reply draws a `text` in place (NanoMuseDeviceReply), so the
                     // computer may send a message's text while its model writes it; others ignore it.
-                    args: ["text": task, "from": NanoMuseHub.shared.name, "language": NanoMuseLocale.tag, "stream": true],
-                    timeout: taskTimeout,
+                    args: args,
+                    // Wait for the task's result, Stop, or a connection/remote failure.
+                    // Relay and target deadlines still apply independently.
+                    timeout: nil,
                     id: live.callId
                 ) { body in
                     guard let stage = body["stage"] as? String else { return }
@@ -147,7 +164,7 @@ enum NanoMuseDeviceMention {
                 if notes.standing > 0 {
                     answer += "\n\n" + AppLocalized("A step ran on a standing approval given on this phone; Approvals on the agent's page lists it.")
                 }
-                await live.finish(header: String(format: AppLocalized("%@ answered:"), device.name), answer: answer, replacing: true, completion: .answered)
+                await live.finish(header: String(format: AppLocalized("%@ answered:"), device.name), answer: answer, replacing: true, completion: .answered, syncedReply: inChat ? reply : nil)
             } catch {
                 if let failure = error as? HubError, failure.code == "timeout" {
                     // A caller deadline or relay timeout does not stop the target by itself.

@@ -257,12 +257,22 @@ Ours, in `NanoMuse/`:
   controls*' delete removes them with the turns. **Reach** (`NanoMuseReach.swift`): a sheet per device
   of the account (open a link, send a note, a shell line, a screenshot) over the hub.
   **A task for another device** (`NanoMuseDeviceMention.swift`, `NanoMuseRemoteApproval.swift`):
-  a message that starts with `@〈device〉` goes to that device's Muse as a hub `task` (the `@` menu
+  a message that starts with `@〈device〉` goes to that device's Muse (the `@` menu
   lists the online devices above the files when the `@` opens the message). While it runs, the
   reply is drawn in the chat (`NanoMuseDeviceReply.swift`): "〈device〉 is working…", each step as
   a capsule, what that Muse says as it comes, the answer in place at the end; the chat is busy
   meanwhile, its stop ends the task there too, and a line queued meanwhile goes when it ends.
-  A timeout or disconnect marks unfinished steps failed; Stop cancels them. A final answer
+  A desktop or headless dsh target must advertise `task.chat`. The phone syncs the original
+  message first, then sends its `cid` and `mid`: the target continues the corresponding ordinary
+  chat with its history and settings. Chat A and chat B stay separate without additional
+  `From iPhone` task chats. Ordinary conversation sync remains on, including manual desktop
+  turns after the task. Hub and sync deliver the final answer under the same message id.
+  Side chats require side-chat sync on both devices; an older target must be updated. Phone
+  targets retain the existing `task` action. See [hub.md](hub.md) for errors and replay handling.
+  The iPhone adds no local deadline to an `@device` task: it waits for the result, Stop,
+  a disconnect or a remote error. The relay and target keep their own limits; removing
+  the phone's timer alone does not allow tasks past those limits or keep iOS running
+  in the background. A timeout or disconnect marks unfinished steps failed; Stop cancels them. A final answer
   does not mark a step successful unless its result arrived. When a step
   there needs a yes, the `approval` event is answered here, where the task was typed
   ([hub.md](hub.md)), on a card with the Android phone's four answers: *Allow once*, *Allow for
@@ -789,6 +799,29 @@ after onboarding: a crash on every launch, in `AIChatView.body.getter` →
 those, or add a third modifier, one link. The composer stack is an `AnyView` there on purpose.
 `MinisTests/NanoMuseRound6Tests.swift` measures the body's value size and type depth and fails
 when either grows past its ceiling.
+
+## Personal installation without a Mac
+
+The **iOS · Personal IPA** workflow builds an unsigned device app on a GitHub macOS runner.
+Run it from your own fork's Actions tab and download the `nanoMuse-Personal-unsigned-*` artifact.
+It contains the IPA, a SHA-256 file and a manifest with the source revision. Apple credentials
+are not needed for compilation. Sign and install the IPA locally on Windows with a tool such
+as [Sideloadly](https://sideloadly.io/), using your own Apple account. Free-account installations
+expire after seven days and need refreshing. Do not put your Apple password in GitHub secrets.
+
+This is a separate **nanoMuse Personal** app with its own bundle identifier and URL schemes.
+Keep the existing app installed. Its local data is separate, so sign into nanoMuse Cloud again
+to sync the account's conversations. Keep the personal bundle identifier stable when updating.
+The ordinary sync and `@` routing changes require the updated desktop plugin as well.
+
+The workflow uses `scripts/ios/Personal.xcconfig` and `package-personal.py`: the
+`NANOMUSE_PERSONAL` condition selects app-local storage, disables Apple iCloud startup and
+hides its settings entry. Packaging removes the share, file-provider and widget extensions,
+old signatures and provisioning profiles. Apple iCloud, App Group sharing and entitlement-based
+Apple tools are outside this build's supported features. nanoMuse Cloud sign-in, conversation
+sync and device communication use the relay and remain available. Third-party OAuth callbacks
+and other optional integrations still need device testing. Compilation and packaging do not
+confirm successful free-account signing or operation on a particular iOS version.
 
 ## TestFlight
 

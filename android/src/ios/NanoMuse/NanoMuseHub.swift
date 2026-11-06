@@ -69,6 +69,9 @@ enum NanoMuseHubErrors {
         case "unknown_agent": return AppLocalized("That coding agent is not on the computer.")
         case "no_session": return AppLocalized("That session is not on the computer any more.")
         case "unknown_action": return AppLocalized("The computer runs an older nanoMuse that does not know this action.")
+        case "sync_required": return AppLocalized("Turn on conversation sync and side chat sync on both devices before asking in this chat.")
+        case "message_missing": return AppLocalized("Could not sync this message. Try again when both devices are online.")
+        case "duplicate_task": return AppLocalized("That message was already dispatched. Check this chat for its result.")
         case "bad_key", "bad_device": return AppLocalized("Signed out on the relay; sign in again.")
         default:
             if !message.isEmpty { AppLogger(category: "NanoMuseHub").info("hub failure \(code): \(message)") }
@@ -412,7 +415,8 @@ final class NanoMuseHub: ObservableObject {
 
     /// Asks another device for something; resolves with its `result` body. Progress arrives on `onEvent`.
     /// `id` is the call's frame id when the caller needs it later (`stop {call}`); a fresh one otherwise.
-    func call(to: String, action: String, args: [String: Any] = [:], timeout: TimeInterval = 120, id given: String? = nil, onEvent: (([String: Any]) -> Void)? = nil) async throws -> [String: Any] {
+    /// `timeout: nil` disables the local deadline; results, errors, disconnection and `abandon` still settle the call.
+    func call(to: String, action: String, args: [String: Any] = [:], timeout: TimeInterval? = 120, id given: String? = nil, onEvent: (([String: Any]) -> Void)? = nil) async throws -> [String: Any] {
         guard connected else { throw HubError(code: "disconnected", message: "this iPhone is not on the hub; sign in to nanoMuse Cloud and turn on Devices") }
         let id = given ?? Self.newCallId()
         return try await withCheckedThrowingContinuation { cont in
@@ -426,12 +430,14 @@ final class NanoMuseHub: ObservableObject {
             }
             if let onEvent { eventHandlers[id] = onEvent }
             send(["type": "call", "id": id, "to": to, "action": action, "args": args])
-            // The timer ends with the answer, so a long timeout does not keep the hub alive for nothing.
-            timer = Task { @MainActor [weak self] in
-                try? await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
-                guard !Task.isCancelled, let self, let done = self.pending.removeValue(forKey: id) else { return }
-                self.eventHandlers.removeValue(forKey: id)
-                done(.failure(HubError(code: "timeout", message: "\(to) did not answer in time")))
+            // Calls without a local deadline create no timer. Other calls cancel theirs on completion.
+            if let timeout {
+                timer = Task { @MainActor [weak self] in
+                    try? await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
+                    guard !Task.isCancelled, let self, let done = self.pending.removeValue(forKey: id) else { return }
+                    self.eventHandlers.removeValue(forKey: id)
+                    done(.failure(HubError(code: "timeout", message: "\(to) did not answer in time")))
+                }
             }
         }
     }
