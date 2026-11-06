@@ -129,6 +129,8 @@ All notable changes to nanoMuse. The format follows [Keep a Changelog](https://k
 
 ### iOS
 
+- Made the All chats new-chat button open a fresh side-chat draft after the list closed, preserving model-group and folder choices instead of leaving the previous main chat on screen.
+
 - Added a separate unsigned Personal IPA workflow for local free-account signing, with app-local storage and without Apple cloud entitlements or embedded extensions.
 - Passed the personal-build marker through the source Info.plist so successful device builds could be packaged as a separate Personal IPA.
 

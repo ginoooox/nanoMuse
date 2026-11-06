@@ -872,6 +872,9 @@ enum ToolSheet: String, Identifiable {
 }
 
 struct ContentView: View {
+    // nanoMuse: an All chats sheet hands new drafts to its shell after dismissal.
+    var nmNavigation = NanoMuseClassicNavigation()
+
     /// Prefix for draft session IDs. Each new chat gets a unique suffix
     /// so SwiftUI's `.id()` correctly destroys old views and creates new ones.
     private static let newSessionPrefix = "__new__"
@@ -1707,7 +1710,7 @@ struct ContentView: View {
                 // intent, and a stale crash flag must not swallow them.
                 CrashReporter.shared.clearCrashLoopFlag()
                 shareLog.warning("[Share] .task: crash-loop detected — skipping session restore, landing on the session list")
-            } else {
+            } else if nmNavigation.restoreLaunchSession { // nanoMuse: opening All chats is not an app launch.
                 // No share — normal launch screen behavior
                 switch launchScreen {
                 case 1:
@@ -3488,6 +3491,7 @@ struct ContentView: View {
             popToHomeForQuickAction()
             return
         }
+        if nmPresentDraft(newId) { return } // nanoMuse: the sheet's owner opens the draft.
         if isWideLayout {
             openSession(newId)
         } else {
@@ -3652,6 +3656,7 @@ struct ContentView: View {
 
     /// Opens a session in the appropriate layout mode.
     private func openSession(_ id: String) {
+        if nmPresentDraft(id) { return } // nanoMuse: preserve the draft across sheet dismissal.
         draftLog.info("🔑DRAFT openSession id=\(id) isWide=\(isWideLayout) prevSel=\(selectedSessionId ?? "nil") prevReal=\(newSessionRealId ?? "nil") prevDraft=\(activeDraftId ?? "nil")")
         // Dismiss keyboard when navigating to a session
         searchFocused = false
@@ -3675,6 +3680,15 @@ struct ContentView: View {
             commitNavigationPath(next)
             currentStackSessionId = id
         }
+    }
+
+    // nanoMuse: transfer the exact draft and its options, without opening a second chat in the sheet.
+    private func nmPresentDraft(_ id: String) -> Bool {
+        guard Self.isNewSessionId(id), let present = nmNavigation.presentDraft else { return false }
+        let folderId = pendingFolderDraft?.draftId == id ? pendingFolderDraft?.folderId : nil
+        if folderId != nil { pendingFolderDraft = nil }
+        present(NanoMuseDraftRequest(id: id, groupId: Self.extractGroupId(from: id), folderId: folderId))
+        return true
     }
 
     // MARK: - Session Context Menu

@@ -360,6 +360,7 @@ struct NanoMuseHomeView: View {
     /// The Muse header's measured height over the main chat (`nmTopOverlay`), without the status bar.
     @State private var chatHeaderHeight: CGFloat = 0
     @State private var showClassic = false
+    @State private var draftHandoff = NanoMuseDraftHandoff()
     @State private var classicWantsSettings = false
     @State private var showNanoMuseSettings = false
     @State private var showCoding = false
@@ -465,9 +466,11 @@ struct NanoMuseHomeView: View {
             onPrefillChat: { text in prefillMainChat(text) },
             onOpenRoutines: { showRoutines = true }
         )
-        .sheet(isPresented: $showClassic) {
-            NanoMuseClassicCover(wantsSettings: classicWantsSettings)
-                .onDisappear { classicWantsSettings = false }
+        .sheet(isPresented: $showClassic, onDismiss: finishClassicCover) {
+            NanoMuseClassicCover(wantsSettings: classicWantsSettings, onNewChat: { draft in
+                draftHandoff.request(draft)
+                showClassic = false
+            })
         }
         .sheet(isPresented: $showCoding) {
             NanoMusePageSheet(title: AppLocalized("Coding agents")) { NanoMuseCodingView() }
@@ -532,6 +535,10 @@ struct NanoMuseHomeView: View {
             // C7: the account's main chat arrived while ours was still an empty draft.
             guard let id = note.object as? String else { return }
             main.adoptIfDraft(id)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .sessionDidCreate), perform: fileHandedOffDraft)
+        .onReceive(NotificationCenter.default.publisher(for: .nanoMuseAccountSwitched)) { _ in
+            draftHandoff = NanoMuseDraftHandoff()
         }
         .onReceive(NotificationCenter.default.publisher(for: .nanoMuseOpenChat)) { note in
             guard let id = note.object as? String else { return }
@@ -605,6 +612,21 @@ struct NanoMuseHomeView: View {
             return
         }
         chatPath = [id]
+    }
+
+    private func finishClassicCover() {
+        classicWantsSettings = false
+        guard let draft = draftHandoff.finishDismissal() else { return }
+        openSideChat(draft.id)
+    }
+
+    private func fileHandedOffDraft(_ note: Notification) {
+        guard let sessionId = note.object as? String else { return }
+        let draftId = (note.userInfo as? [String: String])?["draftId"]
+        Task { @MainActor in
+            guard let folderId = draftHandoff.takeFolder(for: draftId) else { return }
+            _ = await ChatStore.shared.setFolderIfUnfiled(folderId, forSession: sessionId)
+        }
     }
 
     // MARK: Chat layer
@@ -690,7 +712,8 @@ struct NanoMuseHomeView: View {
             .animation(.easeInOut(duration: 0.25), value: allowance.pending)
             .navigationDestination(for: String.self) { id in
                 let draft = id.hasPrefix(NanoMuseMainChat.draftPrefix)
-                AIChatView(sessionId: draft ? nil : id, draftId: draft ? id : nil)
+                AIChatView(sessionId: draft ? nil : id, draftId: draft ? id : nil,
+                           initialGroupId: draftHandoff.groupId(for: id))
                     .id(id)
                     // The side chat keeps the system bar, with the main chat's scrim behind it,
                     // and no Muse header over its list.
@@ -831,9 +854,10 @@ extension Notification.Name {
 /// once the view is on screen.
 private struct NanoMuseClassicCover: View {
     var wantsSettings: Bool
+    var onNewChat: ((NanoMuseDraftRequest) -> Void)? = nil
 
     var body: some View {
-        ContentView()
+        ContentView(nmNavigation: NanoMuseClassicNavigation(restoreLaunchSession: false, presentDraft: onNewChat))
             .nanoMuseStudioPresenter(enabled: true)
             .onAppear {
                 guard wantsSettings else { return }

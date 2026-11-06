@@ -48,6 +48,11 @@ jobs:
         run: |
           cp android/src/ios/Configs/ProviderCustomization.xcconfig.example android/src/ios/Configs/ProviderCustomization.xcconfig
           python3 scripts/ios/test-package-personal.py
+          swiftc -swift-version 6 -warnings-as-errors \
+            android/src/ios/NanoMuse/NanoMuseDraftHandoff.swift \
+            scripts/ios/tests/DraftHandoffTests.swift \
+            -o "$RUNNER_TEMP/draft-handoff-tests"
+          "$RUNNER_TEMP/draft-handoff-tests"
 
       - name: Pinned iSH revision
         id: ish
