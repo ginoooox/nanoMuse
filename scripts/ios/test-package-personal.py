@@ -27,7 +27,7 @@ class PersonalPackageTests(unittest.TestCase):
         self.info = {
             "CFBundleIdentifier": "io.github.nanomuse.app",
             "CFBundleExecutable": "Minis",
-            "NanoMusePersonalBuild": True,
+            "NanoMusePersonalBuild": "YES",
             "CFBundleURLTypes": [
                 {"CFBundleURLName": "nanoMuse Share", "CFBundleURLSchemes": ["nanomuse"]},
                 {"CFBundleURLName": "MCP OAuth Callback", "CFBundleURLSchemes": ["nanomuse-mcp"]},
@@ -90,6 +90,12 @@ class PersonalPackageTests(unittest.TestCase):
         self.save_info()
         with self.assertRaisesRegex(ValueError, "personal-build flag"):
             module.package(self.app, self.output, "io.github.nanomuse.personal", "revision")
+        for flag in ("", "$(NANOMUSE_PERSONAL_BUILD)", "NO", False):
+            with self.subTest(flag=flag):
+                self.info["NanoMusePersonalBuild"] = flag
+                self.save_info()
+                with self.assertRaisesRegex(ValueError, "personal-build flag"):
+                    module.package(self.app, self.output, "io.github.nanomuse.personal", "revision")
         self.info["NanoMusePersonalBuild"] = True
         self.save_info()
         with self.assertRaisesRegex(ValueError, "own bundle"):

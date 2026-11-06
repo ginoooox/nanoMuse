@@ -665,6 +665,9 @@ open src/ios/Minis.xcodeproj
 登录、会话同步和设备通信依赖中继，仍然保留。第三方 OAuth 回调及其他可选集成还需要
 真机测试。编译打包成功后，仍需验证免费签名、安装及当前 iOS 版本下的运行情况。
 
+源码中的 `Info.plist` 显式展开个人配置的 `NANOMUSE_PERSONAL_BUILD` 标记。
+标记缺失、关闭或没有展开时，打包会拒绝继续，避免把普通构建改名当作个人版。
+
 ## TestFlight {#testflight}
 
 分发方式是 TestFlight 的**内部测试员**：你加为 App Store Connect 团队用户的那些人（最多

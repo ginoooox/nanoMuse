@@ -126,6 +126,7 @@ All notable changes to nanoMuse. The format follows [Keep a Changelog](https://k
 ### iOS
 
 - Added a separate unsigned Personal IPA workflow for local free-account signing, with app-local storage and without Apple cloud entitlements or embedded extensions.
+- Passed the personal-build marker through the source Info.plist so successful device builds could be packaged as a separate Personal IPA.
 
 - iPhone device mentions continued the corresponding synced desktop chat using its conversation and message ids, kept later manual turns syncing, and merged Hub and synced answers under one message id. Desktop targets required the new `task.chat` action.
 

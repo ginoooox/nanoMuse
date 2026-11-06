@@ -824,6 +824,9 @@ sync and device communication use the relay and remain available. Third-party OA
 and other optional integrations still need device testing. Compilation and packaging do not
 confirm successful free-account signing or operation on a particular iOS version.
 
+The source `Info.plist` expands `NANOMUSE_PERSONAL_BUILD` from the personal configuration.
+Packaging rejects an absent, disabled or unexpanded marker instead of relabeling an ordinary build.
+
 ## TestFlight
 
 Distribution is TestFlight, **internal testers**: the people you add as users of your App Store
