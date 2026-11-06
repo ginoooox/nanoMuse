@@ -4,6 +4,10 @@ All notable changes to nanoMuse. The format follows [Keep a Changelog](https://k
 
 ## [Unreleased]
 
+### Desktop
+
+- Refreshed task capabilities when session services initialized during a pending hub connection, preventing phones from treating the desktop as too old for an `@` task.
+
 ### Cloud
 
 - Restored the default for invalid numeric preferences saved by the admin console, including blank values.

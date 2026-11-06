@@ -1075,7 +1075,9 @@ export default class NanomuseCloud extends Service {
         this.kept = undefined
         void kept.flush()
       }, 'nanomuse cloud: sync off')
-      if (this.hub.connected) this.hub.restart()
+      // The first hello may still be connecting with its pre-session action list.
+      // Republish once task handlers exist, including before welcome arrives.
+      if (this.state.account) this.hub.restart()
     })
 
     mountGuarded(this.ctx, API_PREFIX, this.handle, 'nanomuse cloud: api')

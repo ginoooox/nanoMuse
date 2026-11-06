@@ -13,6 +13,11 @@ chat, each user message keeps its timestamp and Copy button below its text and
 attachments, aligned to the right. Hover over the message or focus its controls
 with the keyboard to reveal Copy.
 
+After its session services initialize, a signed-in desktop refreshes its hub
+connection so the phones see its task capabilities even when the first connection
+is still opening. This prevents a current desktop from appearing unable to run
+an `@` task after startup.
+
 | | |
 | --- | --- |
 | Windows | `nanoMuse-Desktop-<version>-win-x64.exe` (NSIS; no certificate, so SmartScreen asks for *Run anyway*) |
