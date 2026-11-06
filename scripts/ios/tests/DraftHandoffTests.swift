@@ -8,12 +8,15 @@ enum DraftHandoffTests {
     static func main() {
         var handoff = NanoMuseDraftHandoff()
         precondition(handoff.finishDismissal() == nil, "Swiping away All chats must not create a chat")
+        precondition(!handoff.hasPendingRequest)
 
         let first = NanoMuseDraftRequest(id: "__new__draft-a", groupId: "group-a", folderId: "folder-a")
         handoff.request(first)
+        precondition(handoff.hasPendingRequest, "The sheet owns New Chat notifications until dismissal completes")
         precondition(handoff.groupId(for: first.id) == nil, "Do not activate the draft before dismissal")
         precondition(handoff.takeFolder(for: first.id) == nil, "Do not promote a pending draft")
         precondition(handoff.finishDismissal() == first, "Preserve the exact draft id and options")
+        precondition(!handoff.hasPendingRequest, "Release notification ownership after the handoff")
         precondition(handoff.finishDismissal() == nil, "Repeated dismissal must not open a second draft")
         precondition(handoff.groupId(for: first.id) == "group-a")
         precondition(handoff.groupId(for: "existing-chat") == nil, "Never apply draft options to an existing chat")
@@ -34,6 +37,7 @@ enum DraftHandoffTests {
 
         handoff.request(first)
         handoff = NanoMuseDraftHandoff()
+        precondition(!handoff.hasPendingRequest)
         precondition(handoff.finishDismissal() == nil, "An account switch must discard pending navigation")
         precondition(handoff.groupId(for: first.id) == nil)
         precondition(handoff.takeFolder(for: first.id) == nil)

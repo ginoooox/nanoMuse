@@ -568,7 +568,9 @@ struct NanoMuseHomeView: View {
             // is only on screen under the classic cover, so the tap did nothing (#392). A fresh
             // draft side chat here, as the drawer's new chat button opens one; with the classic
             // cover up, ContentView handles it inside the sheet.
-            guard !showClassic else { return }
+            // The cover may receive this same notification first and start dismissing.
+            // Its pending handoff still owns the request until onDismiss consumes it.
+            guard !showClassic, !draftHandoff.hasPendingRequest else { return }
             openSideChat(NanoMuseMainChat.draftPrefix + UUID().uuidString)
         }
         .onReceive(NanoMuseVoicePrompt.shared.$pending) { request in

@@ -18,6 +18,8 @@ struct NanoMuseDraftHandoff {
     private var pending: NanoMuseDraftRequest?
     private var active: NanoMuseDraftRequest?
 
+    var hasPendingRequest: Bool { pending != nil }
+
     mutating func request(_ draft: NanoMuseDraftRequest) {
         pending = draft
     }
