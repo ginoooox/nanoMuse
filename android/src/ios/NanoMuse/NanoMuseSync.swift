@@ -98,6 +98,10 @@ final class NanoMuseSync: ObservableObject {
         var remoteMids: [String: String] = [:]
         /// Pulled texts waiting for their chat to finish a turn here.
         var deferred: [Pending] = []
+        /// Independently persisted: metadata-only echoes can need repair after a turn.
+        var orderingPending: Set<String> = []
+        var orderingVersion: Int?
+        var orderingResetPending = false
         /// C10: the local session the Chat tab showed when this account was last signed in, so
         /// the same chat is the main one again when it comes back.
         var mainSession: String?
@@ -118,6 +122,9 @@ final class NanoMuseSync: ObservableObject {
             pulled = try c.decodeIfPresent(Bool.self, forKey: .pulled) ?? (cursor > 0)
             remoteMids = try c.decodeIfPresent([String: String].self, forKey: .remoteMids) ?? [:]
             deferred = try c.decodeIfPresent([Pending].self, forKey: .deferred) ?? []
+            orderingPending = try c.decodeIfPresent(Set<String>.self, forKey: .orderingPending) ?? []
+            orderingVersion = try c.decodeIfPresent(Int.self, forKey: .orderingVersion)
+            orderingResetPending = try c.decodeIfPresent(Bool.self, forKey: .orderingResetPending) ?? false
             mainSession = try c.decodeIfPresent(String.self, forKey: .mainSession)
         }
     }
@@ -172,6 +179,7 @@ final class NanoMuseSync: ObservableObject {
     private var workingToSend: [String: Bool] = [:]
     /// A pull that starts at 0 whatever the cursor says (the side-chat switch turned on).
     private var fullPullWanted = false
+    private var syncGeneration = UUID()
 
     private init() {}
 
@@ -263,7 +271,15 @@ final class NanoMuseSync: ObservableObject {
               let mid = reply["mid"] as? String, !mid.isEmpty,
               let text = reply["text"] as? String, !text.isEmpty else { return false }
         let key = mid.lowercased()
-        if store.entries[route.sessionId]?.knownMids.contains(key) == true { return true }
+        let scope = syncScope
+        do {
+            try await rememberOrder(mid: key, cid: route.cid, session: route.sessionId,
+                                    seq: nil, parent: route.mid, scope: scope)
+            if store.entries[route.sessionId]?.knownMids.contains(key) == true {
+                if try await flushOrdering(scope: scope) { revision += 1 }
+                return save()
+            }
+        } catch { return false }
         let pending = Pending(mid: key, cid: route.cid, role: "assistant", text: text,
                               createdAt: (reply["created_at"] as? Int) ?? Int(Date().timeIntervalSince1970), deviceName: device.name)
         var orderedPending = pending
@@ -338,6 +354,7 @@ final class NanoMuseSync: ObservableObject {
         guard loaded, !account.isEmpty else { return }
         tables.stores.removeValue(forKey: account)
         if store.account == account {
+            syncGeneration = UUID()
             store = Store(account: account)
             workingToSend = [:]
             pushDebounce?.cancel()
@@ -365,6 +382,7 @@ final class NanoMuseSync: ObservableObject {
     /// until the app was sent to the background and back or a session changed, so a fresh
     /// sign-in sat on an empty draft while the other device's main chat waited on the relay.
     func accountChanged() {
+        syncGeneration = UUID()
         load()
         if accountKey.isEmpty {
             // signed out: what the relay said about the account's conversations is forgotten and
@@ -393,6 +411,7 @@ final class NanoMuseSync: ObservableObject {
     /// account's own (re-keyed from the 0.1.38 key when that is how it was filed) or a fresh
     /// one, start its cursor over (rule 4), clear presence, tell the lists and the main chat.
     private func activate(_ key: String) {
+        syncGeneration = UUID()
         let previous = tables.current
         if !previous.isEmpty {
             store.mainSession = Self.localMainSessionId()
@@ -488,7 +507,7 @@ final class NanoMuseSync: ObservableObject {
         if active { workingToSend[session] = false } // C9: "working: false" follows the turn's last push
         schedulePush()
         // Texts that arrived while this chat was busy go in once the activity tracker has let go.
-        if !store.deferred.isEmpty {
+        if !store.deferred.isEmpty || !store.orderingPending.isEmpty {
             Task { @MainActor in
                 try? await Task.sleep(nanoseconds: 1_500_000_000)
                 await self.flushDeferred()
@@ -565,9 +584,13 @@ final class NanoMuseSync: ObservableObject {
     /// this phone's conversations go up again.
     func setEnabled(_ on: Bool) async {
         enabled = on
+        load()
+        let scope = syncScope
         guard NanoMuseCloud.isSignedIn, let token = NanoMuseCloud.apiKey else { return }
         do {
             let reply = try await NanoMuseCloud.call("PUT", "/v1/sync/state", body: ["enabled": on], token: token)
+            try requireScope(scope)
+            try await resetOrdering(scope: scope)
             apply(state: reply)
             lastError = nil
             if on {
@@ -589,9 +612,13 @@ final class NanoMuseSync: ObservableObject {
 
     /// "Delete synced conversations": the store is wiped, the switch stays.
     func deleteSynced() async {
+        load()
+        let scope = syncScope
         guard NanoMuseCloud.isSignedIn, let token = NanoMuseCloud.apiKey else { return }
         do {
             _ = try await NanoMuseCloud.call("DELETE", "/v1/sync/changes", body: nil, token: token)
+            try requireScope(scope)
+            try await resetOrdering(scope: scope)
             conversationCount = 0
             messageCount = 0
             lastError = nil
@@ -868,7 +895,9 @@ final class NanoMuseSync: ObservableObject {
 
     /// What the other devices wrote since our cursor, applied in `seq` order.
     func pull() {
-        guard active, let token = NanoMuseCloud.apiKey else { return }
+        load()
+        guard active, loaded, store.account == accountKey, let token = NanoMuseCloud.apiKey else { return }
+        let requestScope = syncScope
         if pulling { pullAgain = true; return }
         pulling = true
         syncing = true
@@ -878,10 +907,15 @@ final class NanoMuseSync: ObservableObject {
                 syncing = pushing
                 if pullAgain { pullAgain = false; pull() }
             }
-            load()
             do {
+                try requireScope(requestScope)
+                if store.orderingResetPending { try await resumeOrderingReset(scope: requestScope) }
+                let backfilled = NanoMuseSyncOrdering.needsBackfill(cursor: store.cursor, version: store.orderingVersion)
+                if backfilled {
+                    try await backfillOrdering(token: token, scope: requestScope)
+                }
                 var more = true
-                var touched = false
+                var touched = backfilled
                 // C9: a table's first pull and the switch-on pull start at 0 and ask for the last
                 // `tail` texts per conversation; the switch-on pull leaves the cursor where it is
                 // (only ever raised) so nothing is pulled twice later.
@@ -890,12 +924,11 @@ final class NanoMuseSync: ObservableObject {
                 var since = full ? 0 : store.cursor
                 while more {
                     let path = Self.pullPath(since: since, sideChats: sideChats, tail: full ? Self.tail : nil)
+                    try requireScope(requestScope)
                     let reply = try await NanoMuseCloud.call("GET", path, body: nil, token: token)
-                    let pageAccount = store.account
-                    let changed = try await apply(changes: reply)
-                    guard store.account == pageAccount, accountKey == pageAccount else {
-                        throw HubError(code: "sync_account_changed", message: "")
-                    }
+                    try requireScope(requestScope)
+                    let changed = try await apply(changes: reply, scope: requestScope)
+                    try requireScope(requestScope)
                     touched = touched || changed
                     let cursor = (reply["cursor"] as? Int) ?? Int((reply["cursor"] as? Double) ?? 0)
                     let previousCursor = store.cursor
@@ -908,10 +941,14 @@ final class NanoMuseSync: ObservableObject {
                     if cursor <= since { more = false }
                     since = cursor
                 }
-                if !store.pulled {
+                if !store.pulled || store.orderingVersion != 1 {
+                    let previousPulled = store.pulled
+                    let previousVersion = store.orderingVersion
                     store.pulled = true
+                    store.orderingVersion = 1
                     guard save() else {
-                        store.pulled = false
+                        store.pulled = previousPulled
+                        store.orderingVersion = previousVersion
                         throw HubError(code: "sync_storage_failed", message: "")
                     }
                 }
@@ -930,8 +967,8 @@ final class NanoMuseSync: ObservableObject {
     }
 
     /// One page. Returns true when something changed locally.
-    private func apply(changes reply: [String: Any]) async throws -> Bool {
-        let pageAccount = store.account
+    private func apply(changes reply: [String: Any], scope: NanoMuseSyncOrdering.Scope) async throws -> Bool {
+        try requireScope(scope)
         var changed = false
         let me = NanoMuseHub.shared.deviceId
         // C10: the account's main joins the shell's main chat only when that chat is this
@@ -940,6 +977,7 @@ final class NanoMuseSync: ObservableObject {
         let sideChats = sideChats
 
         for record in reply["conversations"] as? [[String: Any]] ?? [] {
+            try requireScope(scope)
             guard let cid = record["cid"] as? String else { continue }
             let deleted = (record["deleted"] as? Bool) ?? false
             let kind = (record["kind"] as? String) ?? "side"
@@ -954,6 +992,7 @@ final class NanoMuseSync: ObservableObject {
                 if let local {
                     store.entries.removeValue(forKey: local.key)
                     await ChatStore.shared.deleteSession(local.key)
+                    try requireScope(scope)
                     changed = true
                 }
                 if store.mainCid == cid { store.mainCid = nil }
@@ -966,6 +1005,7 @@ final class NanoMuseSync: ObservableObject {
                     let sessionId = local.key
                     if let title, title != local.value.pushedTitle, await ChatStore.shared.getSession(sessionId)?.title != title {
                         await ChatStore.shared.updateSessionTitle(sessionId, title: title, category: nil)
+                        try requireScope(scope)
                         store.entries[sessionId]?.pushedTitle = title
                         changed = true
                     }
@@ -974,12 +1014,18 @@ final class NanoMuseSync: ObservableObject {
                     let own = store.entries[mainId]
                     store.entries[mainId] = Entry(cid: cid, kind: "main", fromDevice: own?.fromDevice, fromDeviceName: own?.fromDeviceName, pushedTitle: title, pushedUpdatedAt: nil, knownMids: [])
                     if let title, await ChatStore.shared.getSession(mainId)?.title == nil {
+                        try requireScope(scope)
                         await ChatStore.shared.updateSessionTitle(mainId, title: title, category: nil)
+                        try requireScope(scope)
                     }
                     changed = true
                 } else {
                     // No main chat here yet (a draft): the account's main becomes a session the shell adopts.
                     let session = await ChatStore.shared.createSession(modelId: Self.defaultModelId(), title: title, source: "nanomuse-sync")
+                    if syncScope != scope {
+                        await ChatStore.shared.deleteSession(session.id)
+                        try requireScope(scope)
+                    }
                     store.entries[session.id] = Entry(cid: cid, kind: "main", fromDevice: device, fromDeviceName: deviceName, pushedTitle: title, pushedUpdatedAt: nil, knownMids: [])
                     NotificationCenter.default.post(name: .nanoMuseMainChatAdopt, object: session.id)
                     changed = true
@@ -991,11 +1037,16 @@ final class NanoMuseSync: ObservableObject {
                 let sessionId = local.key
                 if let title, title != local.value.pushedTitle, await ChatStore.shared.getSession(sessionId)?.title != title {
                     await ChatStore.shared.updateSessionTitle(sessionId, title: title, category: nil)
+                    try requireScope(scope)
                     store.entries[sessionId]?.pushedTitle = title
                     changed = true
                 }
             } else {
                 let session = await ChatStore.shared.createSession(modelId: Self.defaultModelId(), title: title, source: "nanomuse-sync")
+                if syncScope != scope {
+                    await ChatStore.shared.deleteSession(session.id)
+                    try requireScope(scope)
+                }
                 store.entries[session.id] = Entry(cid: cid, kind: "side", fromDevice: device, fromDeviceName: deviceName, pushedTitle: title, pushedUpdatedAt: Int(session.updatedAt.timeIntervalSince1970), knownMids: [])
                 changed = true
             }
@@ -1004,6 +1055,7 @@ final class NanoMuseSync: ObservableObject {
         // Texts, grouped by conversation so each session's ids are read once.
         var presentBySession: [String: Set<String>] = [:]
         for record in reply["messages"] as? [[String: Any]] ?? [] {
+            try requireScope(scope)
             guard let mid = (record["mid"] as? String)?.lowercased(), let cid = record["cid"] as? String,
                   let entry = store.entries.first(where: { $0.value.cid == cid }) else { continue }
             let sessionId = entry.key
@@ -1013,6 +1065,7 @@ final class NanoMuseSync: ObservableObject {
             if deleted {
                 await ChatStore.shared.deleteLocalMessage(messageId: mid)
                 await ChatStore.shared.deleteLocalMessage(messageId: mid.uppercased())
+                try requireScope(scope)
                 store.entries[sessionId]?.knownMids.remove(mid)
                 store.remoteMids.removeValue(forKey: mid)
                 store.deferred.removeAll { $0.mid == mid }
@@ -1022,14 +1075,7 @@ final class NanoMuseSync: ObservableObject {
             // Persist ordering evidence BEFORE every dedup/echo fast path. Existing rows
             // and receipts still need seq backfill, even when their text is already known.
             let relaySeq = NanoMuseSyncOrdering.relaySequence(record["seq"])
-            guard await ChatStore.shared.nmWriteSyncOrder(
-                domain: orderingDomain, cid: cid, sessionId: sessionId, mid: mid, seq: relaySeq,
-                reorder: !SessionActivityTracker.isActiveThreadSafe(sessionId)) else {
-                throw HubError(code: "sync_storage_failed", message: "")
-            }
-            guard store.account == pageAccount, accountKey == pageAccount else {
-                throw HubError(code: "sync_account_changed", message: "")
-            }
+            try await rememberOrder(mid: mid, cid: cid, session: sessionId, seq: relaySeq, scope: scope)
             changed = true
             if let index = store.deferred.firstIndex(where: { $0.mid == mid }) {
                 store.deferred[index].relaySeq = relaySeq ?? store.deferred[index].relaySeq
@@ -1039,6 +1085,7 @@ final class NanoMuseSync: ObservableObject {
             if store.entries[sessionId]?.knownMids.contains(mid) == true || store.deferred.contains(where: { $0.mid == mid }) { continue }
             if presentBySession[sessionId] == nil {
                 presentBySession[sessionId] = Set(await ChatStore.shared.loadMessages(sessionId: sessionId).map { $0.id.lowercased() })
+                try requireScope(scope)
             }
             if presentBySession[sessionId]?.contains(mid) == true { store.entries[sessionId]?.knownMids.insert(mid); continue }
             guard let roleName = record["role"] as? String, MessageRole(rawValue: roleName) != nil else { continue }
@@ -1065,9 +1112,8 @@ final class NanoMuseSync: ObservableObject {
             guard let session = store.entries.first(where: { $0.value.cid == pending.cid })?.key else { return false }
             return !SessionActivityTracker.isActiveThreadSafe(session)
         }) else { throw HubError(code: "sync_storage_failed", message: "") }
-        guard store.account == pageAccount, accountKey == pageAccount else {
-            throw HubError(code: "sync_account_changed", message: "")
-        }
+        try requireScope(scope)
+        if try await flushOrdering(scope: scope) { changed = true }
         return changed
     }
 
@@ -1075,6 +1121,7 @@ final class NanoMuseSync: ObservableObject {
     /// end). While that chat runs a turn here the store refuses — the row waits in `deferred` and
     /// `turnFinished` / the next pull write it. Returns true when the row is in the database.
     private func insert(_ pending: Pending, into sessionId: String) async -> Bool {
+        let scope = syncScope
         let account = store.account
         guard store.entries[sessionId]?.cid == pending.cid else { return false }
         if SessionActivityTracker.isActiveThreadSafe(sessionId) {
@@ -1082,15 +1129,22 @@ final class NanoMuseSync: ObservableObject {
             return false
         }
         guard let data = try? JSONEncoder().encode([ContentPart.text(pending.text)]), let partsJSON = String(data: data, encoding: .utf8) else { return false }
-        guard await ChatStore.shared.nmWriteSyncOrder(
-            domain: orderingDomain, cid: pending.cid, sessionId: sessionId, mid: pending.mid,
+        let result = await ChatStore.shared.nmWriteSyncOrder(
+            domain: scope.domain, cid: pending.cid, sessionId: sessionId, mid: pending.mid,
             seq: pending.relaySeq, parent: pending.parentMid,
             message: .init(role: pending.role, parts: partsJSON, created: Double(pending.createdAt)),
-            reorder: true) else { return false }
+            reorder: true)
+        guard syncScope == scope, store.account == account else { return false }
+        if result == .deferred {
+            if !store.deferred.contains(where: { $0.mid == pending.mid }) { store.deferred.append(pending) }
+            store.orderingPending.insert(sessionId)
+            return false
+        }
+        guard result == .stored else { return false }
         await ChatStore.shared.nmTouchSession(sessionId)
         // Database work can yield while the person switches accounts. Never mark the new
         // account's table with a row belonging to the previous account and conversation.
-        guard store.account == account, accountKey == account,
+        guard syncScope == scope, store.account == account, accountKey == account,
               store.entries[sessionId]?.cid == pending.cid else { return false }
         store.entries[sessionId]?.knownMids.insert(pending.mid)
         store.remoteMids[pending.mid] = pending.deviceName
@@ -1100,8 +1154,10 @@ final class NanoMuseSync: ObservableObject {
 
     /// The texts that waited for a running chat, tried again. True when any went in.
     private func writeDeferred() async -> Bool {
+        let scope = syncScope
         var wrote = false
         for pending in store.deferred {
+            guard syncScope == scope else { return false }
             guard let sessionId = store.entries.first(where: { $0.value.cid == pending.cid })?.key else {
                 store.deferred.removeAll { $0.mid == pending.mid }
                 continue
@@ -1114,11 +1170,12 @@ final class NanoMuseSync: ObservableObject {
     /// After a turn: the waiting texts go in and the open chat is told.
     private func flushDeferred() async {
         load()
+        let scope = syncScope
         var wrote = await writeDeferred()
-        for sessionId in store.entries.keys where !SessionActivityTracker.isActiveThreadSafe(sessionId) {
-            guard await ChatStore.shared.nmRepairSyncOrder(sessionId: sessionId) else { return }
-            wrote = true
-        }
+        do {
+            try requireScope(scope)
+            if try await flushOrdering(scope: scope) { wrote = true }
+        } catch { note(error); return }
         guard save(), wrote else { return }
         revision += 1
         NotificationCenter.default.post(name: .cloudSyncDidFetchChanges, object: nil)
@@ -1242,6 +1299,97 @@ final class NanoMuseSync: ObservableObject {
             activate(account)
         }
         if haltedAccount != nil, haltedAccount != account { haltedAccount = nil }
+    }
+
+    private var syncScope: NanoMuseSyncOrdering.Scope {
+        .init(account: accountKey, domain: orderingDomain, generation: syncGeneration)
+    }
+
+    private func requireScope(_ scope: NanoMuseSyncOrdering.Scope) throws {
+        guard syncScope == scope, store.account == scope.account else {
+            throw HubError(code: "sync_account_changed", message: "")
+        }
+    }
+
+    private func rememberOrder(mid: String, cid: String, session: String, seq: Int64?,
+                               parent: String? = nil, scope: NanoMuseSyncOrdering.Scope) async throws {
+        try requireScope(scope)
+        let result = await ChatStore.shared.nmWriteSyncOrder(domain: scope.domain, cid: cid,
+            sessionId: session, mid: mid, seq: seq, parent: parent, reorder: false)
+        try requireScope(scope)
+        guard result != .failed else { throw HubError(code: "sync_storage_failed", message: "") }
+        store.orderingPending.insert(session)
+    }
+
+    /// Once per page/turn, not once per echo and never while the session runs.
+    private func flushOrdering(scope: NanoMuseSyncOrdering.Scope) async throws -> Bool {
+        try requireScope(scope)
+        var wrote = false
+        for session in store.orderingPending {
+            guard store.entries[session] != nil else { store.orderingPending.remove(session); continue }
+            if SessionActivityTracker.isActiveThreadSafe(session) { continue }
+            let repaired = await ChatStore.shared.nmRepairSyncOrder(sessionId: session)
+            try requireScope(scope)
+            if repaired { store.orderingPending.remove(session); wrote = true }
+            else if !SessionActivityTracker.isActiveThreadSafe(session) {
+                throw HubError(code: "sync_storage_failed", message: "")
+            }
+        }
+        return wrote
+    }
+
+    /// Upgrade metadata only: no old text/session recreation and no live cursor rewind.
+    private func backfillOrdering(token: String, scope: NanoMuseSyncOrdering.Scope) async throws {
+        var since = 0
+        while true {
+            try requireScope(scope)
+            let reply = try await NanoMuseCloud.call("GET", Self.pullPath(since: since, sideChats: sideChats, tail: nil), body: nil, token: token)
+            try requireScope(scope)
+            for record in reply["messages"] as? [[String: Any]] ?? [] {
+                guard record["deleted"] as? Bool != true,
+                      let cid = record["cid"] as? String, let mid = record["mid"] as? String,
+                      let entry = store.entries.first(where: { $0.value.cid == cid }),
+                      Self.takes(kind: entry.value.kind, sideChats: sideChats) else { continue }
+                try await rememberOrder(mid: mid.lowercased(), cid: cid, session: entry.key,
+                    seq: NanoMuseSyncOrdering.relaySequence(record["seq"]), scope: scope)
+            }
+            _ = try await flushOrdering(scope: scope)
+            let cursor = (reply["cursor"] as? Int) ?? Int((reply["cursor"] as? Double) ?? 0)
+            guard (reply["more"] as? Bool) == true, cursor > since else { break }
+            since = cursor
+        }
+        let oldVersion = store.orderingVersion
+        store.orderingVersion = 1
+        guard save() else {
+            store.orderingVersion = oldVersion
+            throw HubError(code: "sync_storage_failed", message: "")
+        }
+    }
+
+    private func resetOrdering(scope: NanoMuseSyncOrdering.Scope) async throws {
+        try requireScope(scope)
+        // Fence old pages BEFORE yielding to SQLite. Persist intent so a crash or
+        // failed reset is retried before any subsequent pull may write old seq.
+        syncGeneration = UUID()
+        store.orderingResetPending = true
+        store.orderingVersion = nil
+        store.orderingPending = []
+        for index in store.deferred.indices { store.deferred[index].relaySeq = nil }
+        guard save() else { throw HubError(code: "sync_storage_failed", message: "") }
+        try await resumeOrderingReset(scope: syncScope)
+    }
+
+    private func resumeOrderingReset(scope: NanoMuseSyncOrdering.Scope) async throws {
+        try requireScope(scope)
+        guard await ChatStore.shared.nmResetSyncOrder(domain: scope.domain) else {
+            throw HubError(code: "sync_storage_failed", message: "")
+        }
+        try requireScope(scope)
+        store.orderingResetPending = false
+        guard save() else {
+            store.orderingResetPending = true
+            throw HubError(code: "sync_storage_failed", message: "")
+        }
     }
 
     private var orderingDomain: String {

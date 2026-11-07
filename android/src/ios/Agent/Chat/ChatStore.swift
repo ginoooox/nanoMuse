@@ -4018,7 +4018,8 @@ actor ChatStore {
     /// repair when the session is already healthy.
     private func sessionNeedsRepair(sessionId: String) -> Bool {
         // nanoMuse: canonical order for this session includes durable seq/parent edges.
-        if (try? NanoMuseSyncOrdering.hasEvidence(db, session: sessionId)) == true { return true }
+        let syncEvidence = (try? NanoMuseSyncOrdering.hasEvidence(db, session: sessionId)) == true
+        if syncEvidence && SessionActivityTracker.isActiveThreadSafe(sessionId) { return false }
 
         // 1. sortOrder duplicates
         let dupSql = "SELECT COUNT(*), COUNT(DISTINCT sort_order) FROM messages WHERE session_id = ?"
@@ -4048,6 +4049,8 @@ actor ChatStore {
         }
         sqlite3_finalize(mStmt)
         if hasLegacyMarker { return true }
+
+        if syncEvidence { return (try? NanoMuseSyncOrdering.needsRepair(db, session: sessionId)) ?? false }
 
         // 3. rank inversion: dense 0..n-1 expected by canonical (created_at, id) order.
         // Catches the case where a remote merge inserted with a hint integer that
@@ -4102,6 +4105,10 @@ actor ChatStore {
         // nanoMuse: never let legacy hash tie-breaking undo durable relay evidence.
         do {
             if try NanoMuseSyncOrdering.hasEvidence(db, session: sessionId) {
+                guard !SessionActivityTracker.isActiveThreadSafe(sessionId) else {
+                    exec("ROLLBACK")
+                    return report
+                }
                 let ids = try NanoMuseSyncOrdering.orderedIDs(db, session: sessionId)
                 let oldOrders = Dictionary(uniqueKeysWithValues: rows.map { ($0.id, $0.oldSortOrder) })
                 rows = ids.map { (id: $0, oldSortOrder: oldOrders[$0] ?? 0) }
@@ -4373,23 +4380,24 @@ actor ChatStore {
     // No CloudKit merge or global transaction semantics are changed.
     func nmWriteSyncOrder(domain: String, cid: String, sessionId: String, mid: String,
                           seq: Int64?, parent: String? = nil,
-                          message: NanoMuseSyncOrdering.Message? = nil, reorder: Bool) -> Bool {
-        guard !dbDegraded else { return false }
+                          message: NanoMuseSyncOrdering.Message? = nil, reorder: Bool) -> NanoMuseSyncOrdering.WriteResult {
+        guard !dbDegraded else { return .failed }
         do {
-            try NanoMuseSyncOrdering.write(db, domain: domain, cid: cid, session: sessionId,
-                mid: mid, seq: seq, parent: parent, message: message, reorder: reorder)
+            let result = try NanoMuseSyncOrdering.write(db, domain: domain, cid: cid, session: sessionId,
+                mid: mid, seq: seq, parent: parent, message: message, reorder: reorder,
+                active: SessionActivityTracker.isActiveThreadSafe(sessionId))
             invalidateSessionListCache()
             Task { @MainActor in ViewModelCache.shared.markStale(sessionId: sessionId) }
-            return true
+            return result
         } catch {
             iCloudLogger.error("[nanoMuse] sync ordering write failed: \(String(describing: error))")
-            return false
+            return .failed
         }
     }
 
     // nanoMuse: apply metadata deferred while an agent was using local sort_order.
     func nmRepairSyncOrder(sessionId: String) -> Bool {
-        guard !dbDegraded else { return false }
+        guard !dbDegraded, !SessionActivityTracker.isActiveThreadSafe(sessionId) else { return false }
         do {
             if try NanoMuseSyncOrdering.hasEvidence(db, session: sessionId) {
                 try NanoMuseSyncOrdering.repair(db, session: sessionId)
@@ -4398,6 +4406,12 @@ actor ChatStore {
             }
             return true
         } catch { return false }
+    }
+
+    func nmResetSyncOrder(domain: String) -> Bool {
+        guard !dbDegraded else { return false }
+        do { try NanoMuseSyncOrdering.reset(db, domain: domain); return true }
+        catch { return false }
     }
 
     private func touchSession(_ sessionId: String) {

@@ -6,7 +6,11 @@ import SQLite3
 /// Shared by ChatStore and the standalone macOS SQLite regression executable.
 enum NanoMuseSyncOrdering {
     enum Failure: Error { case sqlite(Int32), conflict, cycle, missingMessage }
-    struct Message { let role: String; let parts: String; let created: Double }
+    struct Message: Sendable { let role: String; let parts: String; let created: Double }
+    enum WriteResult: Equatable, Sendable { case stored, deferred, failed }
+    struct Scope: Equatable, Sendable {
+        let account: String; let domain: String; let generation: UUID
+    }
     private struct Row {
         let id: String; let created: Double; let ordinal: Int64
         let seq: Int64?; let parent: String?; let domain: String?; let cid: String?
@@ -24,6 +28,14 @@ enum NanoMuseSyncOrdering {
       seq=COALESCE(nm_sync_order.seq,excluded.seq),
       parent_mid=COALESCE(nm_sync_order.parent_mid,excluded.parent_mid)
     WHERE nm_sync_order.session_id=excluded.session_id
+    """
+    static let sessionDeleteTriggerSQL = """
+    CREATE TRIGGER IF NOT EXISTS nm_sync_order_session_delete AFTER DELETE ON sessions
+    BEGIN DELETE FROM nm_sync_order WHERE session_id=OLD.id; END
+    """
+    static let messageDeleteTriggerSQL = """
+    CREATE TRIGGER IF NOT EXISTS nm_sync_order_message_delete AFTER DELETE ON messages
+    BEGIN DELETE FROM nm_sync_order WHERE session_id=OLD.session_id AND mid=LOWER(OLD.id); END
     """
     static let insertSQL = """
     INSERT OR IGNORE INTO messages(id,session_id,role,parts_json,created_at,updated_at,part_flags,sort_order)
@@ -46,6 +58,8 @@ enum NanoMuseSyncOrdering {
               let integer = Int64(number.stringValue), integer > 0 else { return nil }
         return integer
     }
+
+    static func needsBackfill(cursor: Int, version: Int?) -> Bool { cursor > 0 && version != 1 }
 
     private static let transient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
 
@@ -76,7 +90,11 @@ enum NanoMuseSyncOrdering {
     private static func text(_ stmt: OpaquePointer, _ column: Int32) -> String? {
         sqlite3_column_text(stmt, column).map { String(cString: $0) }
     }
-    static func migrate(_ db: OpaquePointer?) throws { try statement(db, migrateSQL) }
+    static func migrate(_ db: OpaquePointer?) throws {
+        try statement(db, migrateSQL)
+        try statement(db, sessionDeleteTriggerSQL)
+        try statement(db, messageDeleteTriggerSQL)
+    }
 
     /// SAVEPOINT composes with an existing ChatStore transaction; all failures propagate.
     private static func atomic(_ db: OpaquePointer?, _ body: () throws -> Void) throws {
@@ -90,9 +108,10 @@ enum NanoMuseSyncOrdering {
             throw error
         }
     }
+    @discardableResult
     static func write(_ db: OpaquePointer?, domain: String, cid: String, session: String,
                       mid: String, seq: Int64?, parent: String? = nil,
-                      message: Message? = nil, reorder: Bool) throws {
+                      message: Message? = nil, reorder: Bool, active: Bool = false) throws -> WriteResult {
         guard !domain.isEmpty, !cid.isEmpty, !mid.isEmpty, seq == nil || seq! > 0 else { throw Failure.conflict }
         let key = mid.lowercased()
         try atomic(db) {
@@ -103,7 +122,7 @@ enum NanoMuseSyncOrdering {
                 if let parent, let old = text(stmt,2), old != parent.lowercased() { throw Failure.conflict }
             }
             try statement(db, upsertSQL, [domain,cid,session,key,seq,parent?.lowercased()])
-            if let message {
+            if let message, !active {
                 var exists = false
                 try statement(db, "SELECT session_id FROM messages WHERE LOWER(id)=?", [key]) { stmt in
                     guard text(stmt,0) == session else { throw Failure.conflict }
@@ -114,8 +133,9 @@ enum NanoMuseSyncOrdering {
                     guard sqlite3_changes(db) == 1 else { throw Failure.missingMessage }
                 }
             }
-            if reorder { try rewrite(db, session: session) }
+            if reorder && !active { try rewrite(db, session: session) }
         }
+        return active && (message != nil || reorder) ? .deferred : .stored
     }
     private static func rows(_ db: OpaquePointer?, session: String) throws -> [Row] {
         try migrate(db)
@@ -175,6 +195,16 @@ enum NanoMuseSyncOrdering {
         }
         return result
     }
+    static func needsRepair(_ db: OpaquePointer?, session: String) throws -> Bool {
+        let current = try rows(db, session: session).sorted {
+            $0.ordinal == $1.ordinal ? $0.id < $1.id : $0.ordinal < $1.ordinal
+        }
+        let expected = try orderedIDs(db, session: session)
+        return current.enumerated().contains { index,row in
+            row.ordinal != Int64(index) || row.id != expected[index]
+        }
+    }
+
     private static func rewrite(_ db: OpaquePointer?, session: String) throws {
         let ids = try orderedIDs(db, session:session)
         // Preserve legacy marker identity before changing its numeric rank.
@@ -194,7 +224,17 @@ enum NanoMuseSyncOrdering {
         WHERE session_id=?
         """, [session,session,session])
     }
-    static func repair(_ db: OpaquePointer?, session: String) throws {
+    @discardableResult
+    static func repair(_ db: OpaquePointer?, session: String, active: Bool = false) throws -> Bool {
+        guard !active else { return false }
         try atomic(db) { try rewrite(db, session:session) }
+        return true
+    }
+    /// Only confirmed relay wipe/re-enable paths may invalidate seq, not ordinary replay.
+    static func reset(_ db: OpaquePointer?, domain: String) throws {
+        try atomic(db) {
+            try migrate(db)
+            try statement(db, "DELETE FROM nm_sync_order WHERE domain=?", [domain])
+        }
     }
 }

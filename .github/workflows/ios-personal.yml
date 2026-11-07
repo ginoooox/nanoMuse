@@ -71,7 +71,7 @@ jobs:
             android/deps/resources
             android/deps/frameworks
             android/deps/lame-build
-          key: ios-personal-deps-${{ runner.os }}-${{ runner.arch }}-${{ steps.ish.outputs.rev }}-${{ hashFiles('scripts/ios/*.sh', 'android/deps/*.sh', 'android/deps/ffmpeg-patch/**', 'android/deps/rclone-mobile/**') }}
+          key: ios-personal-deps-${{ runner.os }}-${{ runner.arch }}-${{ steps.ish.outputs.rev }}-${{ hashFiles('scripts/ios/*.sh', '!scripts/ios/test-sync-order.sh', 'android/deps/*.sh', 'android/deps/ffmpeg-patch/**', 'android/deps/rclone-mobile/**') }}
 
       - name: Build native dependencies
         if: steps.deps-cache.outputs.cache-hit != 'true'
