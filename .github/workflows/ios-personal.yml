@@ -41,6 +41,9 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
           cache-dependency-path: android/deps/rclone-mobile/go.sum
 
+      - name: Test production sync ordering with Swift and SQLite
+        run: bash scripts/ios/test-sync-order.sh
+
       - name: Homebrew packages
         run: brew install ninja meson llvm lld libarchive pkg-config
 

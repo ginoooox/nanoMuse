@@ -4017,6 +4017,9 @@ actor ChatStore {
     /// OR any compact marker lacks `first_kept_message_id`. Used to skip expensive
     /// repair when the session is already healthy.
     private func sessionNeedsRepair(sessionId: String) -> Bool {
+        // nanoMuse: canonical order for this session includes durable seq/parent edges.
+        if (try? NanoMuseSyncOrdering.hasEvidence(db, session: sessionId)) == true { return true }
+
         // 1. sortOrder duplicates
         let dupSql = "SELECT COUNT(*), COUNT(DISTINCT sort_order) FROM messages WHERE session_id = ?"
         var dupStmt: OpaquePointer?
@@ -4095,6 +4098,18 @@ actor ChatStore {
             }
         }
         sqlite3_finalize(selStmt)
+
+        // nanoMuse: never let legacy hash tie-breaking undo durable relay evidence.
+        do {
+            if try NanoMuseSyncOrdering.hasEvidence(db, session: sessionId) {
+                let ids = try NanoMuseSyncOrdering.orderedIDs(db, session: sessionId)
+                let oldOrders = Dictionary(uniqueKeysWithValues: rows.map { ($0.id, $0.oldSortOrder) })
+                rows = ids.map { (id: $0, oldSortOrder: oldOrders[$0] ?? 0) }
+            }
+        } catch {
+            exec("ROLLBACK")
+            return report
+        }
 
         // Step 2: compute new sortOrders and update any that changed.
         // We assign 0..n-1 dense, using the canonical (created_at, id) order.
@@ -4353,6 +4368,37 @@ actor ChatStore {
     func nmTouchSession(_ sessionId: String) { // nanoMuse:
         touchSession(sessionId) // nanoMuse:
     } // nanoMuse:
+
+    // nanoMuse: narrow sync-only writes use the same SQLite helper as standalone tests.
+    // No CloudKit merge or global transaction semantics are changed.
+    func nmWriteSyncOrder(domain: String, cid: String, sessionId: String, mid: String,
+                          seq: Int64?, parent: String? = nil,
+                          message: NanoMuseSyncOrdering.Message? = nil, reorder: Bool) -> Bool {
+        guard !dbDegraded else { return false }
+        do {
+            try NanoMuseSyncOrdering.write(db, domain: domain, cid: cid, session: sessionId,
+                mid: mid, seq: seq, parent: parent, message: message, reorder: reorder)
+            invalidateSessionListCache()
+            Task { @MainActor in ViewModelCache.shared.markStale(sessionId: sessionId) }
+            return true
+        } catch {
+            iCloudLogger.error("[nanoMuse] sync ordering write failed: \(String(describing: error))")
+            return false
+        }
+    }
+
+    // nanoMuse: apply metadata deferred while an agent was using local sort_order.
+    func nmRepairSyncOrder(sessionId: String) -> Bool {
+        guard !dbDegraded else { return false }
+        do {
+            if try NanoMuseSyncOrdering.hasEvidence(db, session: sessionId) {
+                try NanoMuseSyncOrdering.repair(db, session: sessionId)
+                invalidateSessionListCache()
+                Task { @MainActor in ViewModelCache.shared.markStale(sessionId: sessionId) }
+            }
+            return true
+        } catch { return false }
+    }
 
     private func touchSession(_ sessionId: String) {
         invalidateSessionListCache()

@@ -4,6 +4,8 @@ All notable changes to nanoMuse. The format follows [Keep a Changelog](https://k
 
 ## [Unreleased]
 
+- Fixed personal iOS sync ordering for messages sharing an integer second when relay sequence evidence is available.
+
 ### Desktop
 
 - Refreshed task capabilities when session services initialized during a pending hub connection, preventing phones from treating the desktop as too old for an `@` task.
