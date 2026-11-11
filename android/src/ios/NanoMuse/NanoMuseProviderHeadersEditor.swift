@@ -5,7 +5,7 @@ struct NanoMuseProviderHeadersEditor: View {
     let baseURL: String
     @Environment(\.dismiss) private var dismiss
     @State private var rows: [NanoMuseProviderHeaderRules.Header] = []
-    @State private var errorKey: String?
+    @State private var errorMessage: String?
 
     var body: some View {
         Form {
@@ -34,8 +34,8 @@ struct NanoMuseProviderHeadersEditor: View {
                 Text(AppLocalized("Use the API key field for authentication. Custom User-Agent takes priority over a User-Agent entered here. Host, authentication and transport headers cannot be overridden."))
                     .foregroundStyle(.secondary)
             }
-            if let errorKey {
-                Text(AppLocalized(errorKey)).foregroundStyle(.red)
+            if let errorMessage {
+                Text(errorMessage).foregroundStyle(.red)
             }
         }
         .navigationTitle(AppLocalized("Custom Headers"))
@@ -55,9 +55,9 @@ struct NanoMuseProviderHeadersEditor: View {
             try NanoMuseProviderHeaders.save(rows, instanceId: instanceId, baseURL: baseURL)
             dismiss()
         } catch is NanoMuseProviderHeaderRules.Failure {
-            errorKey = "Use unique HTTP header names and nonempty values without line breaks. Host, authentication and transport headers are reserved."
+            errorMessage = AppLocalized("Use unique HTTP header names and nonempty values without line breaks. Host, authentication and transport headers are reserved.")
         } catch {
-            errorKey = "Could not save headers to the Keychain. Try again."
+            errorMessage = AppLocalized("Could not save headers to the Keychain. Try again.")
         }
     }
 }
