@@ -124,6 +124,17 @@ App Intent 是系统调用快捷指令的接口，无法直接控制 SwiftUI 语
 
 ## 在 Mac 上构建 {#building-on-a-mac}
 
+### 免费账号侧载个人版 {#personal-build-for-free-account-sideloading}
+
+此 fork 的 `iOS · Latest Personal IPA` 工作流以锁定的最新上游源码构建，启用
+`NANOMUSE_PERSONAL`。数据保存在 App 自己的沙盒内，停用 Apple iCloud 同步和 App Group
+文件传递，安装包不包含小组件、分享扩展和「文件」扩展。nanoMuse Cloud 登录、聊天同步和
+跨设备功能仍可使用。个人版名为 nanoMuse Personal，包标识为 `io.github.nanomuse.personal`，
+与原版分开安装。未签名 IPA 需要先在本地重签，免费 Apple 账号通常每七天续签一次。
+随包的 JSON 记录上游源码提交与 fork 构建提交，便于核对。
+
+### 标准构建 {#standard-build}
+
 构建环境沿用上游要求，见 [android/BUILDING.md](../../android/BUILDING.md)：较新 Xcode，项目使用 iOS 26 SDK；Homebrew 安装 `ninja meson llvm lld libarchive pkg-config`；构建 rclone 使用 Go 1.25。
 
 ```bash

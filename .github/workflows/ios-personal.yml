@@ -1,0 +1,141 @@
+name: iOS · Latest Personal IPA
+
+# No Apple credentials leave the installer's computer. This is a separate app
+# with app-local storage, no Apple cloud services and no embedded extensions.
+on:
+  workflow_dispatch:
+    inputs:
+      bundle_id:
+        description: Bundle identifier for the separate personal app
+        default: io.github.nanomuse.personal
+        required: true
+        type: string
+
+concurrency:
+  group: ios-personal-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: unsigned personal device app
+    # Intel capacity is separate from the macOS ARM pool.
+    runs-on: macos-26-intel
+    timeout-minutes: 180
+    env:
+      GO_VERSION: "1.25"
+      PERSONAL_BUNDLE_ID: ${{ inputs.bundle_id }}
+      SOURCE_REVISION: 154f076fdaed76f1ef5646895a1954dd74d237f9
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Verify latest upstream fixes and native dependencies are retained
+        run: |
+          git diff --exit-code "$SOURCE_REVISION" -- android/deps
+          git diff --name-only v1.0.9 "$SOURCE_REVISION" -- android/src/ios | while IFS= read -r file; do
+            git diff --exit-code "$SOURCE_REVISION" -- "$file" || exit 1
+          done
+
+      - uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1.7.0
+        with:
+          xcode-version: latest-stable
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: android/deps/rclone-mobile/go.sum
+
+      - name: Homebrew packages
+        run: brew install ninja meson llvm lld libarchive pkg-config
+
+      - name: Build configuration
+        run: |
+          cp android/src/ios/Configs/ProviderCustomization.xcconfig.example android/src/ios/Configs/ProviderCustomization.xcconfig
+          python3 scripts/ios/test-package-personal.py
+
+      - name: Pinned iSH revision
+        id: ish
+        run: echo "rev=$(git rev-parse HEAD:android/deps/ish)" >> "$GITHUB_OUTPUT"
+
+      - name: Native dependency cache
+        id: deps-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            android/deps/libs
+            android/deps/include
+            android/deps/resources
+            android/deps/frameworks
+            android/deps/lame-build
+          key: ios-personal-deps-${{ runner.os }}-${{ runner.arch }}-${{ steps.ish.outputs.rev }}-${{ hashFiles('scripts/ios/*.sh', 'android/deps/*.sh', 'android/deps/ffmpeg-patch/**', 'android/deps/rclone-mobile/**') }}
+
+      - name: Build native dependencies
+        if: steps.deps-cache.outputs.cache-hit != 'true'
+        working-directory: android
+        run: |
+          ./deps/build_lame.sh
+          ./deps/build_ffmpeg.sh
+          ./deps/build_ish.sh
+          bash ../scripts/ios/prepare-rootfs-host.sh
+          ./deps/build_rclone_ios.sh
+
+      - name: Save completed native dependencies
+        if: steps.deps-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            android/deps/libs
+            android/deps/include
+            android/deps/resources
+            android/deps/frameworks
+            android/deps/lame-build
+          key: ${{ steps.deps-cache.outputs.cache-primary-key }}
+
+      - name: Build personal device app
+        working-directory: android/src/ios
+        run: |
+          set -o pipefail
+          mkdir -p build
+          xcodebuild build \
+            -project Minis.xcodeproj -scheme Minis -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build/PersonalDerivedData \
+            -xcconfig ../../../scripts/ios/Personal.xcconfig \
+            -skipPackagePluginValidation -skipMacroValidation \
+            2>&1 | tee build/personal-xcodebuild.log | grep -E 'error:|/NanoMuse/.*warning:|BUILD|Compiling|Linking' || true
+          grep -q '\*\* BUILD SUCCEEDED \*\*' build/personal-xcodebuild.log
+
+      - name: Zero warnings in NanoMuse
+        working-directory: android/src/ios
+        run: |
+          if grep -E '/NanoMuse/[^:]+:[0-9]+:[0-9]+: warning:' build/personal-xcodebuild.log | sort -u | tee build/personal-warnings.txt | grep -q .; then
+            echo '::error::warnings in NanoMuse/ (see above)'
+            exit 1
+          fi
+
+      - name: Package unsigned IPA
+        run: |
+          python3 scripts/ios/package-personal.py \
+            --app android/src/ios/build/PersonalDerivedData/Build/Products/Release-iphoneos/Minis.app \
+            --out android/src/ios/build/personal/nanoMuse-1.0.9-main-154f076f-Personal-unsigned.ipa \
+            --bundle-id "$PERSONAL_BUNDLE_ID" --revision "$GITHUB_SHA" --source-revision "$SOURCE_REVISION"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: nanoMuse-Personal-unsigned-${{ github.run_number }}
+          path: android/src/ios/build/personal/*
+          retention-days: 7
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: ios-personal-log-${{ github.run_number }}
+          path: android/src/ios/build/personal-xcodebuild.log
+          retention-days: 7
+          if-no-files-found: warn

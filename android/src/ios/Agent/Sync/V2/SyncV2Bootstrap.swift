@@ -42,6 +42,7 @@ enum SyncV2Bootstrap {
     /// Override via the `cloudSync.v2.enabled` UserDefaults key directly
     /// during development.
     static var isEnabled: Bool {
+        guard NanoMusePersonalBuild.supportsAppleCloud else { return false } // nanoMuse: no CloudKit entitlement in personal builds.
         let key = "cloudSync.v2.enabled"
         if UserDefaults.standard.object(forKey: key) == nil {
             // Inherit from v1 if the user ever interacted with that
@@ -65,6 +66,7 @@ enum SyncV2Bootstrap {
     }
 
     static func setEnabled(_ enabled: Bool) {
+        guard NanoMusePersonalBuild.supportsAppleCloud else { return } // nanoMuse: keep entitlement-free builds opted out.
         let prev = UserDefaults.standard.object(forKey: "cloudSync.v2.enabled") as? Bool ?? true
         UserDefaults.standard.set(enabled, forKey: "cloudSync.v2.enabled")
         logger.info("[SyncCore] v2 enabled flag set to \(enabled) (was \(prev))")

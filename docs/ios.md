@@ -762,6 +762,18 @@ deployment target is iOS 16), the intent's own strings in `Localizable.xcstrings
 
 ## Building on a Mac
 
+### Personal build for free-account sideloading
+
+The fork's `iOS · Latest Personal IPA` workflow builds the latest pinned upstream source with
+`NANOMUSE_PERSONAL`. It keeps data inside the app sandbox, disables Apple iCloud sync and App
+Group transfers, and packages no widgets, share extension or Files extension. nanoMuse Cloud
+sign-in, its conversation sync and cross-device features remain available. This is a separate
+app, `io.github.nanomuse.personal`, named nanoMuse Personal. Sign the unsigned IPA locally before
+installing it. A free Apple account generally needs a refreshed signature every seven days.
+The JSON manifest records the upstream source revision and the fork's build revision separately.
+
+### Standard build
+
 Requirements are upstream's, in [android/BUILDING.md](../android/BUILDING.md): a recent Xcode
 (the project is on the iOS 26 SDK), Homebrew `ninja meson llvm lld libarchive pkg-config`, Go 1.25
 for rclone.

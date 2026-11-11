@@ -2,6 +2,9 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<!-- nanoMuse: only Personal.xcconfig marks the separate personal build. -->
+	<key>NanoMusePersonalBuild</key>
+	<string>$(NANOMUSE_PERSONAL_BUILD)</string>
 	<key>BGTaskSchedulerPermittedIdentifiers</key>
 	<array>
 		<string>io.github.nanomuse.app.liveactivity-refresh</string>

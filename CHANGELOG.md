@@ -4,6 +4,8 @@ All notable changes to nanoMuse. The format follows [Keep a Changelog](https://k
 
 ## [Unreleased]
 
+- Added a separate personal iOS build for free-account sideloading, with app-local storage and Apple cloud services and extensions disabled. nanoMuse Cloud remains available.
+
 - Prevented failed coding runs from retrying in a new conversation after a tool had already started or returned a result.
 
 - Preserved desktop device-chat drafts edited while a send request was awaiting its response. For #815.

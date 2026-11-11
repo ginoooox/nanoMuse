@@ -748,6 +748,9 @@ struct MinisApp: App {
         // keeps the cache fresh after ensureExists() seeds a first-launch SOUL.md.
         SoulStore.refreshCache()
 
+        // nanoMuse: create the app-local folders above, then skip the absent personal-build extension.
+        guard NanoMusePersonalBuild.supportsExtensions else { return }
+
         // Clean up stale directory created by a bug where workingSet identifier
         // was passed through as a subdirectory name.
         let staleDir = root.appendingPathComponent("shared/NSFileProviderWorkingSetContainerItemIdentifier")
@@ -1053,7 +1056,7 @@ struct MinisApp: App {
     private static func migrateSharedDirToAppGroup() {
         let fm = FileManager.default
         let library = fm.urls(for: .libraryDirectory, in: .userDomainMask).first!
-        let container = fm.containerURL(forSecurityApplicationGroupIdentifier: "group.io.github.nanomuse.app")!
+        let container = SharedContainerStore.containerRoot // nanoMuse: personal builds have no App Group.
 
         let migrations: [(source: URL, dest: URL, label: String)] = [
             // Legacy Library/MinisChat/shared → new shared
