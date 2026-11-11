@@ -14,6 +14,27 @@ notes (the composer, onboarding, sign-out); the Devices section and notification
 devices still have the fewest hours on a real device. The first archive taught the pipeline
 that automatic signing wants a registered device, which is why it signs manually now.
 
+## Custom provider headers
+
+For an API-key OpenAI-compatible provider with a custom API base, open its settings and
+choose **Custom Headers**. Add the header names and values required by the endpoint, then
+tap **Save**. Both Chat Completions and Responses API providers send these headers for chat,
+model discovery and other requests made by their OpenAI provider. Set **API Format** to the
+format supported by the service. A separate **Custom User-Agent** value takes priority over
+a `User-Agent` entered in Custom Headers. Authentication stays in the API-key field;
+host, authentication and transport headers are reserved.
+
+Values are masked in the editor and request diagnostics, stored in this device's Keychain,
+and excluded from provider exports and sync. Deleting the provider deletes its custom
+headers. Changing the endpoint scheme, host or port requires entering the headers again.
+Switching between Chat Completions and Responses retains headers for the same endpoint.
+
+An HTTPS gateway reachable from the phone can be used with **Settings → Network → HTTP
+proxy** switched off, without a VPN or proxy app. Headers authenticate an accessible gateway;
+they do not change DNS, TLS or network reachability. Cloudflare Access service-token
+gateways usually require `CF-Access-Client-Id` and `CF-Access-Client-Secret` in addition to
+the provider's API key. Enter actual values, rather than environment-variable references.
+
 ## Where it lives
 
 `android/` is the whole OpenMinis repository as a `git subtree`, not just the Android app. The

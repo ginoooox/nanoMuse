@@ -1008,6 +1008,7 @@ final class ProviderConfigStore: ObservableObject {
         }
         // Clean up credentials from Keychain
         ProviderKeychainHelper.deleteAPIKey(instanceId: instanceId)
+        NanoMuseProviderHeaders.remove(instanceId: instanceId) // nanoMuse: remove gateway secrets too.
         ProviderKeychainHelper.deleteOAuthToken(instanceId: instanceId)
         ProviderKeychainHelper.deleteOAuthString(instanceId: instanceId, account: "oauth-email")
         ProviderKeychainHelper.deleteOAuthString(instanceId: instanceId, account: "oauth-gcp-project")
@@ -2655,7 +2656,8 @@ final class ProviderConfigStore: ObservableObject {
             guard let key = ProviderKeychainHelper.loadAPIKey(instanceId: instance.id) else {
                 throw ModelRefreshError.noCredential
             }
-            return try await OpenAIModelsAPI.fetchModels(apiKey: key, baseURL: customBase, appendV1Suffix: appendV1, forceRefresh: forceRefresh, userAgent: ua)
+            // nanoMuse: model discovery carries this endpoint's device-local gateway headers.
+            return try await OpenAIModelsAPI.fetchModels(apiKey: key, baseURL: customBase, appendV1Suffix: appendV1, forceRefresh: forceRefresh, userAgent: ua, customHeaders: instance.effectiveCustomHeaders)
         case (.openAI, .oauth):
             if let manualToken = ProviderKeychainHelper.loadOAuthString(instanceId: instance.id, account: "manual-oauth-token") {
                 return try await OpenAIModelsAPI.fetchModels(apiKey: manualToken, baseURL: customBase, appendV1Suffix: appendV1, forceRefresh: forceRefresh, userAgent: ua)
@@ -2689,7 +2691,8 @@ final class ProviderConfigStore: ObservableObject {
             guard let key = ProviderKeychainHelper.loadAPIKey(instanceId: instance.id) else {
                 throw ModelRefreshError.noCredential
             }
-            return try await OpenAIModelsAPI.fetchModels(apiKey: key, baseURL: customBase, appendV1Suffix: appendV1, forceRefresh: forceRefresh, userAgent: ua)
+            // nanoMuse: model discovery carries this endpoint's device-local gateway headers.
+            return try await OpenAIModelsAPI.fetchModels(apiKey: key, baseURL: customBase, appendV1Suffix: appendV1, forceRefresh: forceRefresh, userAgent: ua, customHeaders: instance.effectiveCustomHeaders)
         case (.openAIResponses, .oauth):
             // Responses API provider type only supports API key auth
             return ModelsDevAPI.enrichModels(ProviderType.openAIResponses.builtInModels)

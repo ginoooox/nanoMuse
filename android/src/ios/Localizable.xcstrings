@@ -1,6 +1,419 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Header Name": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Header Name"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请求头名称"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "請求標頭名稱"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Header-Name"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nombre de cabecera"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nom de l’en-tête"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ヘッダー名"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "헤더 이름"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Имя заголовка"
+          }
+        }
+      }
+    },
+    "Header Value": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Header Value"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请求头值"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "請求標頭值"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Header-Wert"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Valor de cabecera"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Valeur de l’en-tête"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ヘッダーの値"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "헤더 값"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Значение заголовка"
+          }
+        }
+      }
+    },
+    "Add Header": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Add Header"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "添加请求头"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "新增請求標頭"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Header hinzufügen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Añadir cabecera"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ajouter un en-tête"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ヘッダーを追加"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "헤더 추가"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Добавить заголовок"
+          }
+        }
+      }
+    },
+    "Headers are stored in this device's Keychain and sent to this endpoint for chat and model discovery. They are excluded from exports and sync. Changing the endpoint host requires entering them again. Swipe a row to delete it.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Headers are stored in this device's Keychain and sent to this endpoint for chat and model discovery. They are excluded from exports and sync. Changing the endpoint host requires entering them again. Swipe a row to delete it."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请求头保存在本机钥匙串中，用于此接口的对话和模型列表请求，不会导出或同步。更换接口主机后需重新填写。左滑可删除一行。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "請求標頭儲存在本機鑰匙圈中，用於此端點的對話和模型列表請求，不會匯出或同步。更換端點主機後需重新填寫。向左滑動可刪除一列。"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Header werden im Schlüsselbund dieses Geräts gespeichert und für Chats und Modelllisten an diesen Endpunkt gesendet. Sie werden weder exportiert noch synchronisiert. Nach einem Hostwechsel müssen sie erneut eingegeben werden. Zum Löschen eine Zeile wischen."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Las cabeceras se guardan en el llavero de este dispositivo y se envían a este servidor para chats y listas de modelos. No se exportan ni sincronizan. Al cambiar el host, hay que introducirlas de nuevo. Desliza una fila para eliminarla."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Les en-têtes sont stockés dans le trousseau de cet appareil et envoyés à ce serveur pour les discussions et les listes de modèles. Ils sont exclus des exports et de la synchronisation. Saisissez-les à nouveau après un changement d’hôte. Balayez une ligne pour la supprimer."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ヘッダーはこの端末のキーチェーンに保存され、チャットとモデル一覧の取得時にこの接続先へ送信されます。エクスポートや同期には含まれません。ホストを変更した場合は再入力してください。行をスワイプすると削除できます。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "헤더는 이 기기의 키체인에 저장되며 채팅과 모델 목록 요청 시 이 서버로 전송됩니다. 내보내기와 동기화에는 포함되지 않습니다. 호스트를 변경하면 다시 입력해야 합니다. 행을 밀어서 삭제하세요."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Заголовки хранятся в Связке ключей этого устройства и отправляются этому серверу для чатов и списков моделей. Они не экспортируются и не синхронизируются. После смены хоста введите их заново. Смахните строку, чтобы удалить её."
+          }
+        }
+      }
+    },
+    "Use the API key field for authentication. Custom User-Agent takes priority over a User-Agent entered here. Host, authentication and transport headers cannot be overridden.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Use the API key field for authentication. Custom User-Agent takes priority over a User-Agent entered here. Host, authentication and transport headers cannot be overridden."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "API Key 请填在密钥栏。单独设置的自定义 User-Agent 优先于这里的 User-Agent。Host、认证及传输相关请求头不能覆盖。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "API Key 請填在金鑰欄。單獨設定的自訂 User-Agent 優先於這裡的 User-Agent。Host、驗證及傳輸相關標頭無法覆寫。"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Verwenden Sie zur Authentifizierung das API-Schlüsselfeld. Der separate benutzerdefinierte User-Agent hat Vorrang. Host-, Authentifizierungs- und Transport-Header können nicht überschrieben werden."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Usa el campo de clave API para autenticarte. El User-Agent personalizado tiene prioridad sobre el introducido aquí. No se pueden sustituir cabeceras de host, autenticación o transporte."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Utilisez le champ de clé API pour l’authentification. Le User-Agent personnalisé est prioritaire sur celui saisi ici. Les en-têtes d’hôte, d’authentification et de transport ne peuvent pas être remplacés."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "認証には API キー欄を使用してください。個別に設定したカスタム User-Agent がここでの入力より優先されます。Host、認証、転送に関するヘッダーは上書きできません。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "인증에는 API 키 입력란을 사용하세요. 별도로 설정한 사용자 지정 User-Agent가 여기 입력한 값보다 우선합니다. 호스트, 인증 및 전송 헤더는 덮어쓸 수 없습니다."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Для аутентификации используйте поле API-ключа. Отдельный User-Agent имеет приоритет над введённым здесь. Заголовки хоста, аутентификации и передачи переопределить нельзя."
+          }
+        }
+      }
+    },
+    "Use unique HTTP header names and nonempty values without line breaks. Host, authentication and transport headers are reserved.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Use unique HTTP header names and nonempty values without line breaks. Host, authentication and transport headers are reserved."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请求头名称不能重复，值不能为空或含换行。Host、认证及传输相关请求头为保留项。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "請求標頭名稱不可重複，值不可空白或含換行。Host、驗證及傳輸相關標頭為保留項目。"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Verwenden Sie eindeutige HTTP-Header-Namen und nicht leere Werte ohne Zeilenumbrüche. Host-, Authentifizierungs- und Transport-Header sind reserviert."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Usa nombres de cabecera HTTP únicos y valores no vacíos sin saltos de línea. Las cabeceras de host, autenticación y transporte están reservadas."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Utilisez des noms d’en-tête HTTP uniques et des valeurs non vides sans retour à la ligne. Les en-têtes d’hôte, d’authentification et de transport sont réservés."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "HTTP ヘッダー名は重複させず、値は空欄や改行を含まないものにしてください。Host、認証、転送に関するヘッダーは予約されています。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "HTTP 헤더 이름은 중복될 수 없으며 값은 비어 있거나 줄 바꿈을 포함할 수 없습니다. 호스트, 인증 및 전송 헤더는 예약되어 있습니다."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Имена HTTP-заголовков должны быть уникальными, значения непустыми и без переносов строк. Заголовки хоста, аутентификации и передачи зарезервированы."
+          }
+        }
+      }
+    },
+    "Could not save headers to the Keychain. Try again.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Could not save headers to the Keychain. Try again."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法将请求头保存到钥匙串，请重试。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "無法將請求標頭儲存到鑰匙圈，請重試。"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Header konnten nicht im Schlüsselbund gespeichert werden. Versuchen Sie es erneut."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No se pudieron guardar las cabeceras en el llavero. Inténtalo de nuevo."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Impossible d’enregistrer les en-têtes dans le trousseau. Réessayez."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ヘッダーをキーチェーンに保存できませんでした。再試行してください。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "키체인에 헤더를 저장하지 못했습니다. 다시 시도하세요."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Не удалось сохранить заголовки в Связке ключей. Повторите попытку."
+          }
+        }
+      }
+    },
     "Conversation in use" : {
       "extractionState" : "manual",
       "localizations" : {

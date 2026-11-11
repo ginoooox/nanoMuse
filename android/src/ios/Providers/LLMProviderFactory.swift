@@ -60,17 +60,23 @@ enum LLMProviderFactory {
     static func applyCustomUserAgent(_ provider: OpenAIProvider, instance: ProviderInstance) -> OpenAIProvider {
         // OAuth (Codex) requires its own `codex_cli_rs/...` UA — never touch it.
         guard !provider.isOAuth else { return provider }
+        // nanoMuse: merge device-local custom headers for API-key OpenAI endpoints.
+        let customHeaders = instance.effectiveCustomHeaders
+        provider.extraHeaders = NanoMuseProviderHeaderRules.merging(customHeaders, into: provider.extraHeaders)
+        provider.customHeaderRedirectGuard = customHeaders.isEmpty ? nil : NanoMuseProviderHeaderRedirectGuard()
         // A user-set per-provider custom UA wins (only honored for
         // custom-base proxy/relay instances, per supportsCustomUserAgent).
         if instance.supportsCustomUserAgent, let ua = instance.effectiveCustomUserAgent {
-            provider.extraHeaders["User-Agent"] = ua
+            // nanoMuse: header names compare without case, even against a custom spelling.
+            provider.extraHeaders = NanoMuseProviderHeaderRules.merging(["User-Agent": ua], into: provider.extraHeaders)
             return provider
         }
         // Otherwise inject the app default UA so outbound requests carry the
         // marketing version (Minis/1.10 …) instead of URLSession's build-number
         // default (Minis/1 CFNetwork/… Darwin/…). Don't clobber a UA another
         // builder already set (e.g. some future provider-specific UA).
-        if provider.extraHeaders["User-Agent"] == nil {
+        // nanoMuse: a custom header may spell user-agent in any case.
+        if !provider.extraHeaders.keys.contains(where: { $0.caseInsensitiveCompare("User-Agent") == .orderedSame }) {
             provider.extraHeaders["User-Agent"] = MinisUserAgent.default
         }
         return provider

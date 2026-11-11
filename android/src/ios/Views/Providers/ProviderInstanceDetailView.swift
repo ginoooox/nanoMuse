@@ -192,6 +192,15 @@ struct ProviderInstanceDetailView: View {
                 customUserAgentSection(instance)
             }
 
+            // nanoMuse: per-endpoint gateway credentials stay in this device's Keychain.
+            if instance.supportsCustomHeaders, let baseURL = instance.effectiveCustomBaseURL {
+                Section {
+                    NavigationLink(AppLocalized("Custom Headers")) {
+                        NanoMuseProviderHeadersEditor(instanceId: instance.id, baseURL: baseURL)
+                    }
+                }
+            }
+
             // MARK: API Format (OpenAI only)
             if (instance.providerType == .openAI || instance.providerType == .openAIResponses)
                 && instance.credentialType == .apiKey {

@@ -114,6 +114,7 @@ final class OpenAIProvider: LLMProvider {
     var appendV1Suffix: Bool
     /// Extra HTTP headers to include in every request (e.g. OpenRouter attribution).
     var extraHeaders: [String: String] = [:]
+    var customHeaderRedirectGuard: NanoMuseProviderHeaderRedirectGuard? // nanoMuse: bind gateway secrets to this origin.
 
     /// [T-model-use-image-passthrough GH#62] Arbitrary extra fields merged into the
     /// /images/generations JSON body, so `minis-model-use` can pass provider-specific
@@ -505,7 +506,7 @@ final class OpenAIProvider: LLMProvider {
             stream: false
         )
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await URLSession.shared.data(for: request, delegate: customHeaderRedirectGuard) // nanoMuse: keep gateway secrets on their origin.
         let statusCode = (response as? HTTPURLResponse)?.statusCode ?? -1
 
         guard (200..<300).contains(statusCode) else {
@@ -576,7 +577,7 @@ final class OpenAIProvider: LLMProvider {
         let byteStream: URLSession.AsyncBytes
         let response: URLResponse
         do {
-            (byteStream, response) = try await session.bytes(for: request)
+            (byteStream, response) = try await session.bytes(for: request, delegate: customHeaderRedirectGuard) // nanoMuse: protect redirects.
         } catch {
             session.finishTasksAndInvalidate()
             throw error
@@ -910,7 +911,7 @@ final class OpenAIProvider: LLMProvider {
             }
         }
         let maskedHeaders: [String: String] = (request.allHTTPHeaderFields ?? [:]).reduce(into: [:]) { acc, pair in
-            acc[pair.key] = pair.key == "Authorization" ? "Bearer ***" : pair.value
+            acc[pair.key] = "***" // nanoMuse: custom header values can be credentials too.
         }
         LastAPIRequestBody.shared.setRequestMeta(
             url: url.absoluteString,
@@ -927,7 +928,7 @@ final class OpenAIProvider: LLMProvider {
         let byteStream: URLSession.AsyncBytes
         let response: URLResponse
         do {
-            (byteStream, response) = try await session.bytes(for: request)
+            (byteStream, response) = try await session.bytes(for: request, delegate: customHeaderRedirectGuard) // nanoMuse: protect redirects.
         } catch {
             session.finishTasksAndInvalidate()
             throw error
@@ -1081,7 +1082,7 @@ final class OpenAIProvider: LLMProvider {
             LastAPIRequestBody.shared.set(bodyStr, provider: "OpenAI")
         }
         let maskedHeaders: [String: String] = (request.allHTTPHeaderFields ?? [:]).reduce(into: [:]) { acc, pair in
-            acc[pair.key] = pair.key == "Authorization" ? "Bearer ***" : pair.value
+            acc[pair.key] = "***" // nanoMuse: custom header values can be credentials too.
         }
         LastAPIRequestBody.shared.setRequestMeta(
             url: url.absoluteString,
@@ -1219,8 +1220,8 @@ final class OpenAIProvider: LLMProvider {
 
         // Headers (mask Authorization)
         if let headers {
-            for (key, val) in headers.sorted(by: { $0.key < $1.key }) {
-                let display = key == "Authorization" ? "Bearer ***" : val
+            // nanoMuse: never log custom header values, regardless of their names.
+            for (key, display) in NanoMuseProviderHeaderRules.redacted(headers).sorted(by: { $0.key < $1.key }) {
                 parts.append("  header: \(key): \(display)")
             }
         }
@@ -1542,13 +1543,13 @@ final class OpenAIProvider: LLMProvider {
                 LastAPIRequestBody.shared.set(s, provider: "OpenAI")
             }
             let masked: [String: String] = (request.allHTTPHeaderFields ?? [:]).reduce(into: [:]) { acc, p in
-                acc[p.key] = p.key.lowercased() == "authorization" ? "Bearer ***" : p.value
+                acc[p.key] = "***" // nanoMuse: mask arbitrary gateway credentials.
             }
             LastAPIRequestBody.shared.setRequestMeta(url: url.absoluteString, method: method, headers: masked)
         }
         #endif
 
-        let (data, response) = try await streamingSession.data(for: request)
+        let (data, response) = try await streamingSession.data(for: request, delegate: customHeaderRedirectGuard) // nanoMuse: keep gateway secrets on their origin.
         let http = response as? HTTPURLResponse
         return RawPassthroughResult(
             data: data,
@@ -1645,7 +1646,7 @@ final class OpenAIProvider: LLMProvider {
                 LastAPIRequestBody.shared.set(bodyStr, provider: "OpenAI")
             }
             let maskedHeaders: [String: String] = (request.allHTTPHeaderFields ?? [:]).reduce(into: [:]) { acc, pair in
-                acc[pair.key] = pair.key == "Authorization" ? "Bearer ***" : pair.value
+                acc[pair.key] = "***" // nanoMuse: custom header values can be credentials too.
             }
             LastAPIRequestBody.shared.setRequestMeta(
                 url: url.absoluteString,
@@ -1663,7 +1664,7 @@ final class OpenAIProvider: LLMProvider {
             // even when the coordinator/CLI budget was 300s. The longer
             // request timeout on streamingSession lets the generation
             // finish.
-            let (data, response) = try await streamingSession.data(for: request)
+            let (data, response) = try await streamingSession.data(for: request, delegate: customHeaderRedirectGuard) // nanoMuse: keep gateway secrets on their origin.
             let statusCode = (response as? HTTPURLResponse)?.statusCode ?? -1
 
             #if DEBUG
@@ -1846,7 +1847,7 @@ final class OpenAIProvider: LLMProvider {
             LastAPIRequestBody.shared.set(summaryStr, provider: "OpenAI")
         }
         let editHeaders: [String: String] = (request.allHTTPHeaderFields ?? [:]).reduce(into: [:]) { acc, pair in
-            acc[pair.key] = pair.key == "Authorization" ? "Bearer ***" : pair.value
+            acc[pair.key] = "***" // nanoMuse: custom header values can be credentials too.
         }
         LastAPIRequestBody.shared.setRequestMeta(
             url: url.absoluteString,
@@ -1858,7 +1859,7 @@ final class OpenAIProvider: LLMProvider {
         // [T-image-gen-timeout] streamingSession (10-min request timeout)
         // — /images/edits is as slow as /images/generations; the 60s
         // default on URLSession.shared aborts long edits with -1001.
-        let (data, response) = try await streamingSession.data(for: request)
+        let (data, response) = try await streamingSession.data(for: request, delegate: customHeaderRedirectGuard) // nanoMuse: keep gateway secrets on their origin.
         let statusCode = (response as? HTTPURLResponse)?.statusCode ?? -1
 
         #if DEBUG

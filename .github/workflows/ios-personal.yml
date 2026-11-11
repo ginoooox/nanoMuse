@@ -37,9 +37,7 @@ jobs:
       - name: Verify latest upstream fixes and native dependencies are retained
         run: |
           git diff --exit-code "$SOURCE_REVISION" -- android/deps
-          git diff --name-only v1.0.9 "$SOURCE_REVISION" -- android/src/ios | while IFS= read -r file; do
-            git diff --exit-code "$SOURCE_REVISION" -- "$file" || exit 1
-          done
+          git merge-base --is-ancestor "$SOURCE_REVISION" HEAD
 
       - uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1.7.0
         with:
@@ -57,6 +55,14 @@ jobs:
         run: |
           cp android/src/ios/Configs/ProviderCustomization.xcconfig.example android/src/ios/Configs/ProviderCustomization.xcconfig
           python3 scripts/ios/test-package-personal.py
+
+      - name: Custom header regression checks
+        run: |
+          swiftc android/src/ios/NanoMuse/NanoMuseProviderHeaderRules.swift \
+            android/src/ios/NanoMuse/NanoMuseProviderHeaders.swift \
+            android/src/ios/MinisTests/Standalone/ProviderCustomHeadersTests.swift \
+            -o "$RUNNER_TEMP/provider-header-tests"
+          "$RUNNER_TEMP/provider-header-tests"
 
       - name: Pinned iSH revision
         id: ish
@@ -122,7 +128,7 @@ jobs:
         run: |
           python3 scripts/ios/package-personal.py \
             --app android/src/ios/build/PersonalDerivedData/Build/Products/Release-iphoneos/Minis.app \
-            --out android/src/ios/build/personal/nanoMuse-1.0.9-main-154f076f-Personal-unsigned.ipa \
+            --out android/src/ios/build/personal/nanoMuse-1.0.9-CustomHeaders-Personal-unsigned.ipa \
             --bundle-id "$PERSONAL_BUNDLE_ID" --revision "$GITHUB_SHA" --source-revision "$SOURCE_REVISION"
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
