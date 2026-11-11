@@ -30,7 +30,9 @@ def package(app: Path, output: Path, source_revision: str, build_revision: str) 
         raise ValueError("An unsigned app must not contain provisioning profiles")
 
     output.mkdir(parents=True, exist_ok=True)
-    filename = f"nanoMuse-{info['CFBundleShortVersionString']}-main-{source_revision[:8]}-unsigned.ipa"
+    filename = (
+        f"nanoMuse-{info['CFBundleShortVersionString']}-main-{source_revision[:8]}-unsigned.ipa"
+    )
     ipa = output.resolve() / filename
     if ipa.exists():
         raise FileExistsError(ipa)
