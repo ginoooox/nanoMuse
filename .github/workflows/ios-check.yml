@@ -1,38 +1,31 @@
-name: iOS · build check
-
-# Compiles the iOS app on a Mac runner without signing and without Apple credentials: the way
-# to find out whether android/src/ios still builds (the tree is written on Linux) before
-# spending an App Store Connect upload on it. Runs on every pull request that touches the iOS
-# tree, and by hand from the Actions tab for anything else (a dependency script under
-# android/deps/, say). The native dependencies take the better part of an hour the first time;
-# the cache is shared with ios-testflight.yml, so a green check makes the next TestFlight run
-# cheap. No secrets: CODE_SIGNING_ALLOWED=NO, so a fork's pull request can run it too.
+name: iOS · Latest unsigned IPA
 
 on:
-  pull_request:
-    paths:
-      - 'android/src/ios/**'
-      - '.github/workflows/ios-check.yml'
   workflow_dispatch:
-
-concurrency:
-  group: ios-check-${{ github.ref }}
-  cancel-in-progress: true
 
 permissions:
   contents: read
 
+concurrency:
+  group: ios-latest-unsigned-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   build:
-    name: xcodebuild (unsigned)
-    runs-on: macos-26
-    timeout-minutes: 150
+    runs-on: macos-26-intel
+    timeout-minutes: 180
     env:
-      GO_VERSION: "1.25"
+      SOURCE_REVISION: 154f076fdaed76f1ef5646895a1954dd74d237f9
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          fetch-depth: 2
           submodules: recursive
+
+      - name: Verify unmodified upstream iOS and native sources
+        run: |
+          git diff --exit-code "$SOURCE_REVISION" -- android/src/ios android/deps
+          test "$(git rev-parse HEAD:android/deps)" = b583220a7b6194e6f9233e249c0720419e26bc96
 
       - uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1.7.0
         with:
@@ -40,23 +33,16 @@ jobs:
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: ${{ env.GO_VERSION }}
+          go-version: '1.25'
           cache-dependency-path: android/deps/rclone-mobile/go.sum
 
-      - name: Homebrew packages (iSH kernel and rootfs tooling)
+      - name: Homebrew packages
         run: brew install ninja meson llvm lld libarchive pkg-config
 
-      - name: Build-time configuration
-        working-directory: android/src/ios
-        run: cp Configs/ProviderCustomization.xcconfig.example Configs/ProviderCustomization.xcconfig
-
-      - name: Pinned iSH revision
-        id: ish
-        run: echo "rev=$(git rev-parse HEAD:android/deps/ish)" >> "$GITHUB_OUTPUT"
-
-      - name: Native dependency cache
+      # The existing cache uses the identical android/deps tree and Intel runner.
+      - name: Restore verified native dependencies
         id: deps-cache
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             android/deps/libs
@@ -64,46 +50,60 @@ jobs:
             android/deps/resources
             android/deps/frameworks
             android/deps/lame-build
-          key: ios-deps-${{ runner.os }}-${{ steps.ish.outputs.rev }}-${{ hashFiles('android/deps/*.sh', 'android/deps/ffmpeg-patch/**', 'android/deps/rclone-mobile/**') }}
+          key: ios-personal-deps-macOS-X64-3f6384c70eefd1a370f121d3492a5f21f7767df9-f449b5bfb5a57f24dee3f1c0dae5623d4fd4cad863adf6cf10cc5bb3c6ede1a7
 
-      - name: Native dependencies (LAME → FFmpeg → iSH → Alpine rootfs → rclone)
+      - name: Build native dependencies if cache is unavailable
         if: steps.deps-cache.outputs.cache-hit != 'true'
         working-directory: android
         run: |
           ./deps/build_lame.sh
           ./deps/build_ffmpeg.sh
           ./deps/build_ish.sh
-          ./deps/prepare_alpine_rootfs.sh
+          bash ../scripts/ios/prepare-rootfs-host.sh
           ./deps/build_rclone_ios.sh
 
-      - name: Build for a device, unsigned
+      - name: Build Release app for an arm64 iOS device
         working-directory: android/src/ios
         run: |
-          set -o pipefail
+          cp Configs/ProviderCustomization.xcconfig.example Configs/ProviderCustomization.xcconfig
           mkdir -p build
+          set -o pipefail
           xcodebuild build \
-            -project Minis.xcodeproj -scheme Minis -configuration Debug \
+            -project Minis.xcodeproj -scheme Minis -configuration Release \
             -destination 'generic/platform=iOS' \
-            -derivedDataPath build/DerivedData \
+            -derivedDataPath build/LatestDerivedData \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY= DEVELOPMENT_TEAM= \
             -skipPackagePluginValidation -skipMacroValidation \
-            2>&1 | tee build/xcodebuild.log | grep -E "error:|/NanoMuse/.*warning:|BUILD|Compiling|Linking" || true
-          grep -q "\*\* BUILD SUCCEEDED \*\*" build/xcodebuild.log
+            2>&1 | tee build/latest-xcodebuild.log | \
+              grep -E 'error:|/NanoMuse/.*warning:|BUILD|Compiling|Linking' || true
+          grep -q '\*\* BUILD SUCCEEDED \*\*' build/latest-xcodebuild.log
 
-      # docs/ios.md: the device build must finish with zero warnings in NanoMuse/. Upstream's
-      # files are theirs; ours are held to the bar here, so a warning cannot sit on main unnoticed.
-      - name: Zero warnings in NanoMuse/
+      - name: Enforce zero warnings in NanoMuse
         working-directory: android/src/ios
         run: |
-          if grep -E "/NanoMuse/[^:]+:[0-9]+:[0-9]+: warning:" build/xcodebuild.log | sort -u | tee build/nanomuse-warnings.txt | grep -q .; then
-            echo "::error::warnings in NanoMuse/ (see above)"
+          if grep -E '/NanoMuse/[^:]+:[0-9]+:[0-9]+: warning:' build/latest-xcodebuild.log | sort -u | tee build/latest-warnings.txt | grep -q .; then
+            echo '::error::warnings in NanoMuse/'
             exit 1
           fi
+
+      - name: Package and validate unsigned IPA
+        run: |
+          python3 scripts/ios/package-unsigned.py \
+            --app android/src/ios/build/LatestDerivedData/Build/Products/Release-iphoneos/Minis.app \
+            --out android/src/ios/build/latest \
+            --source-revision "$SOURCE_REVISION" --build-revision "$GITHUB_SHA"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: nanoMuse-latest-unsigned-${{ github.run_number }}
+          path: android/src/ios/build/latest/*
+          retention-days: 14
+          if-no-files-found: error
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
-          name: ios-check-log-${{ github.run_number }}
-          path: android/src/ios/build/xcodebuild.log
-          retention-days: 7
+          name: ios-latest-build-log-${{ github.run_number }}
+          path: android/src/ios/build/latest-xcodebuild.log
+          retention-days: 14
           if-no-files-found: warn
