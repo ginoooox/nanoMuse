@@ -15,8 +15,13 @@ enum OpenAIModelsAPI {
 
     private static let defaultBaseURL = "https://api.openai.com"
 
-    static func fetchModels(apiKey: String, baseURL: String? = nil, appendV1Suffix: Bool = true, forceRefresh: Bool = false, userAgent: String? = nil) async throws -> [LLMModel] {
-        if !forceRefresh, let cached = OpenAIModelsCache.load(credential: apiKey) {
+    // nanoMuse: model discovery uses the same gateway headers as chat; scope its cache too.
+    static func fetchModels(apiKey: String, baseURL: String? = nil, appendV1Suffix: Bool = true, forceRefresh: Bool = false, userAgent: String? = nil, customHeaders: [String: String] = [:]) async throws -> [LLMModel] {
+        let effectiveUserAgent = userAgent ?? MinisUserAgent.default
+        let context = [apiKey, baseURL ?? defaultBaseURL, String(appendV1Suffix), effectiveUserAgent]
+            + customHeaders.sorted { $0.key < $1.key }.flatMap { [$0.key, $0.value] }
+        let cacheCredential = String(decoding: try JSONEncoder().encode(context), as: UTF8.self)
+        if !forceRefresh, let cached = OpenAIModelsCache.load(credential: cacheCredential) {
             logger.info("Returning \(cached.count) cached models (API key)")
             return cached
         }
@@ -30,10 +35,15 @@ enum OpenAIModelsAPI {
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        // nanoMuse: access-gateway headers also protect GET /models.
+        request.setValue(effectiveUserAgent, forHTTPHeaderField: "User-Agent")
+        for (name, value) in customHeaders { request.setValue(value, forHTTPHeaderField: name) }
+        // nanoMuse: the dedicated User-Agent setting has the same priority as chat.
         if let ua = userAgent { request.setValue(ua, forHTTPHeaderField: "User-Agent") }
         logger.info("Fetching OpenAI models (API key auth, custom base: \(isCustomBase), appendV1: \(appendV1Suffix))")
-        let models = try await performFetch(request, filterOpenAIOnly: !isCustomBase)
-        OpenAIModelsCache.save(models, credential: apiKey)
+        // nanoMuse: access credentials must not follow a redirect to another origin.
+        let models = try await performFetch(request, filterOpenAIOnly: !isCustomBase, protectCustomHeaders: !customHeaders.isEmpty)
+        OpenAIModelsCache.save(models, credential: cacheCredential) // nanoMuse: endpoint-scoped cache.
         return models
     }
 
@@ -90,8 +100,10 @@ enum OpenAIModelsAPI {
         return fetchModelsOAuth()
     }
 
-    private static func performFetch(_ request: URLRequest, filterOpenAIOnly: Bool = true) async throws -> [LLMModel] {
-        let (data, response) = try await NanoMuseProxy.session.data(for: request) // nanoMuse: Settings → Network
+    // nanoMuse: use a per-task redirect guard only when gateway headers are configured.
+    private static func performFetch(_ request: URLRequest, filterOpenAIOnly: Bool = true, protectCustomHeaders: Bool = false) async throws -> [LLMModel] {
+        let guardDelegate = protectCustomHeaders ? NanoMuseProviderHeaderRedirectGuard() : nil
+        let (data, response) = try await NanoMuseProxy.session.data(for: request, delegate: guardDelegate)
         let http = response as? HTTPURLResponse
         let statusCode = http?.statusCode ?? -1
 

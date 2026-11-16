@@ -5,17 +5,37 @@ import Foundation
 enum SharedContainerStore {
     static let appGroupID = "group.io.github.nanomuse.app"
 
+    // nanoMuse: free-account builds store the same directory layout inside their own sandbox.
+    static var containerRoot: URL {
+        #if NANOMUSE_PERSONAL
+        return FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("NanoMusePersonal", isDirectory: true)
+        #else
+        return FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupID)!
+        #endif
+    }
+
     private static let pendingShareKey = "pendingShare"
 
     static var sharedDefaults: UserDefaults? {
-        UserDefaults(suiteName: appGroupID)
+        // nanoMuse: the personal IPA has no share extension or App Group entitlement.
+        #if NANOMUSE_PERSONAL
+        return nil
+        #else
+        return UserDefaults(suiteName: appGroupID)
+        #endif
     }
 
     /// Directory in the shared container for transferring attachment files.
     static var sharedFileDirectory: URL? {
-        FileManager.default
+        // nanoMuse: no cross-process attachment transfer in the personal build.
+        #if NANOMUSE_PERSONAL
+        return nil
+        #else
+        return FileManager.default
             .containerURL(forSecurityApplicationGroupIdentifier: appGroupID)?
             .appendingPathComponent("ShareExtension", isDirectory: true)
+        #endif
     }
 
     // MARK: - Write (called by Share Extension)

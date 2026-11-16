@@ -1,5 +1,13 @@
 # iOS
 
+## 自定义服务商请求头
+
+使用 API Key 的 OpenAI 兼容服务商填好自定义 API 地址后，可进入其设置中的**自定义请求头**，添加网关要求的名称和值，再点击**保存**。Chat Completions 和 Responses API 两种格式均会在对话、模型列表刷新及该 OpenAI 服务商发出的其他请求中携带这些头。**API 格式**需与服务端一致。单独填写的**自定义 User-Agent**优先于这里的 `User-Agent`。API Key 继续在密钥栏填写，Host、认证及传输相关的头不能覆盖。
+
+请求头值在编辑器和请求调试信息中隐藏，只保存在当前设备的钥匙串中，不随服务商导出或同步。删除服务商会删除相应请求头。更换地址的协议、主机或端口后需重新填写；同一地址下切换 Chat Completions 与 Responses 会保留请求头。
+
+如果 iPhone 的网络可以直接访问 HTTPS 网关，关闭**设置 → 网络 → HTTP 代理**即可使用，无需运行 VPN 或代理 App。请求头用于网关认证，无法解决 DNS、TLS 或网络不可达。Cloudflare Access 服务令牌通常需要 `CF-Access-Client-Id` 和 `CF-Access-Client-Secret`，同时仍要填写服务商的 API Key。请填写实际值，不能直接填写 `${变量名}`。
+
 iPhone 版 nanoMuse 基于 OpenMinis 1.13 的 iOS 代码，采用 nanoMuse 的名称和设计。CI（自动构建与检查流程）在 Mac 执行器上构建，再上传到 TestFlight（Apple 的应用测试分发服务）。本页介绍源码位置、构建方法、TestFlight 配置，以及 Android 功能的移植情况。
 
 **发布状态**。 源码、品牌调整、nanoMuse Cloud 登录、hub（设备互联）客户端和发布流程最初都在 Linux 上编写。App 已完成构建、签名并通过 TestFlight 分发。首个版本 0.1.31 (2) 于 2026-10-03 通过「iOS · TestFlight」工作流发布。1.0.0 构建 16 通过 Apple 测试审核后，公开链接 `https://testflight.apple.com/join/ZHexbDqc` 首次可安装它。1.0.1 构建 18、1.0.2 构建 19 在 2026-10-12 通过审核；1.0.3 构建 22、1.0.4 构建 26 在 2026-10-13 通过，因此本文记录的公开链接安装版本为构建 26。1.0.5 构建 28 于 2026-10-14 提审，1.0.6 构建 29 由 `v1.0.6` 标签构建，于 2026-10-24 上传，详见下文发布进展。构建 20、21（1.0.2），23、24、25（标签后合入修复的 1.0.3），27（同类 1.0.4）仅供内部测试。测试反馈促成了输入框、首次引导、退出登录等修复；设备列表与远端通知的真机测试仍相对较少。首次归档发现自动签名要求注册设备，因此目前采用手动签名。
@@ -137,6 +145,36 @@ App Intent 是系统调用快捷指令的接口，无法直接控制 SwiftUI 语
 报告日期表示生成报告的时间。MetricKit 报告另列诊断覆盖时段，该时段不是事件的准确发生时间；日志尾部也会注明来自生成报告的进程。报告不会把这个进程的终端命令、信号文件或卡顿快照当作更早事件的证据，同一秒收到的报告也会分别保存。排查运行时陷阱需要系统 `.ips` 和对应构建的符号；SIGKILL 应查看系统报告中的 [Termination Reason](https://developer.apple.com/documentation/xcode/sigkill)。
 
 ## 在 Mac 上构建 {#building-on-a-mac}
+
+### 免费账号侧载个人版 {#personal-build-for-free-account-sideloading}
+
+此 fork 的 `iOS · Latest Personal IPA` 工作流以锁定的最新上游源码构建，启用
+`NANOMUSE_PERSONAL`。数据保存在 App 自己的沙盒内，停用 Apple iCloud 同步和 App Group
+文件传递，安装包不包含小组件、分享扩展和「文件」扩展。nanoMuse Cloud 登录、聊天同步和
+跨设备功能仍可使用。个人版名为 nano，包标识为 `io.github.nanomuse.personal`，
+与原版分开安装。未签名 IPA 需要先在本地重签，免费 Apple 账号通常每七天续签一次。
+随包的 JSON 记录上游源码提交与 fork 构建提交，便于核对。
+
+个人工作流固定官方提交 `067384b7e5b3c47a7eeca217895be71493396518`，
+保留官方设备绑定聊天入口、持久轮次恢复、Anthropic 提示处理和崩溃证据逻辑。
+不加入旧个人版的 `task.chat` 路由或排序改动，也不改变远程执行预算。
+`macos-26-intel` 先执行三项官方独立 Swift 检查和自定义请求头 Keychain 回归，
+再执行物理 iOS 设备的完整 Release 构建，要求 `NanoMuse/` 零警告。
+原生依赖缓存按依赖源码、子模块版本、Intel rootfs 辅助脚本和已安装的
+Xcode、SDK、工具链区分。打包后独立验证摘要、身份、arm64 Mach-O 和 iOS
+设备平台。工作流不需要 Apple 签名凭据。
+
+以下检查也能在没有 Swift 或 Xcode 的 Windows 上运行，只使用合成安装包夹具，
+不能证明设备编译或重签安装成功：
+
+```bash
+python3 scripts/ios/check-personal-integration.py
+python3 scripts/ios/test-package-personal.py -v
+python3 scripts/ios/test-verify-personal-ipa.py -v
+bash -n scripts/ios/prepare-rootfs-host.sh
+```
+
+### 标准构建 {#standard-build}
 
 构建环境沿用上游要求，见 [android/BUILDING.md](../../android/BUILDING.md)：较新 Xcode，项目使用 iOS 26 SDK；Homebrew 安装 `ninja meson llvm lld libarchive pkg-config`；构建 rclone 使用 Go 1.25。
 

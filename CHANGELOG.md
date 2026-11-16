@@ -4,6 +4,12 @@ All notable changes to nanoMuse. The format follows [Keep a Changelog](https://k
 
 ## [Unreleased]
 
+- Renamed the personal iOS sideload app to nano.
+
+- Added device-local custom HTTP headers for iOS API-key OpenAI-compatible providers, including Responses chat and model discovery through access gateways.
+
+- Added a separate personal iOS build for free-account sideloading, with app-local storage and Apple cloud services and extensions disabled. nanoMuse Cloud remains available.
+
 - Kept the person's request in view during long turns with the default settings, so a task with many tool calls no longer forgets what it was asked, and the wrap-up at the step limit sees the turn's work.
 
 - Kept the previous request and the newest work in view in the turn after a long one, so "carry on" or "send that report" no longer arrives with no context.

@@ -14,6 +14,27 @@ notes (the composer, onboarding, sign-out); the Devices section and notification
 devices still have the fewest hours on a real device. The first archive taught the pipeline
 that automatic signing wants a registered device, which is why it signs manually now.
 
+## Custom provider headers
+
+For an API-key OpenAI-compatible provider with a custom API base, open its settings and
+choose **Custom Headers**. Add the header names and values required by the endpoint, then
+tap **Save**. Both Chat Completions and Responses API providers send these headers for chat,
+model discovery and other requests made by their OpenAI provider. Set **API Format** to the
+format supported by the service. A separate **Custom User-Agent** value takes priority over
+a `User-Agent` entered in Custom Headers. Authentication stays in the API-key field;
+host, authentication and transport headers are reserved.
+
+Values are masked in the editor and request diagnostics, stored in this device's Keychain,
+and excluded from provider exports and sync. Deleting the provider deletes its custom
+headers. Changing the endpoint scheme, host or port requires entering the headers again.
+Switching between Chat Completions and Responses retains headers for the same endpoint.
+
+An HTTPS gateway reachable from the phone can be used with **Settings → Network → HTTP
+proxy** switched off, without a VPN or proxy app. Headers authenticate an accessible gateway;
+they do not change DNS, TLS or network reachability. Cloudflare Access service-token
+gateways usually require `CF-Access-Client-Id` and `CF-Access-Client-Secret` in addition to
+the provider's API key. Enter actual values, rather than environment-variable references.
+
 ## Where it lives
 
 `android/` is the whole OpenMinis repository as a `git subtree`, not just the Android app. The
@@ -798,6 +819,39 @@ matching build's symbols; for a SIGKILL, inspect its
 [Termination Reason](https://developer.apple.com/documentation/xcode/sigkill).
 
 ## Building on a Mac
+
+### Personal build for free-account sideloading
+
+The fork's `iOS · Latest Personal IPA` workflow builds the latest pinned upstream source with
+`NANOMUSE_PERSONAL`. It keeps data inside the app sandbox, disables Apple iCloud sync and App
+Group transfers, and packages no widgets, share extension or Files extension. nanoMuse Cloud
+sign-in, its conversation sync and cross-device features remain available. This is a separate
+app, `io.github.nanomuse.personal`, named nano. Sign the unsigned IPA locally before
+installing it. A free Apple account generally needs a refreshed signature every seven days.
+The JSON manifest records the upstream source revision and the fork's build revision separately.
+
+The personal workflow pins official commit `067384b7e5b3c47a7eeca217895be71493396518`
+and retains the official device-bound conversation entry, persistent turn recovery,
+Anthropic prompt handling and crash evidence. It does not add the older personal
+`task.chat` route or sorting changes, and does not change remote execution budgets.
+On `macos-26-intel` it runs the three official standalone Swift checks and the
+custom-header Keychain regression, then builds Release for a physical iOS device
+with zero warnings in `NanoMuse/`. Native caches are keyed by dependency sources,
+submodule revisions, the Intel rootfs helper and the installed Xcode/SDK/toolchain.
+Packaging is followed by independent checksum, identity, arm64 Mach-O and iOS
+platform validation. No Apple signing credentials are required by this workflow.
+
+These checks also run on Windows without Swift or Xcode, using synthetic bundle
+fixtures only. They do not prove a device build or a signed installation:
+
+```bash
+python3 scripts/ios/check-personal-integration.py
+python3 scripts/ios/test-package-personal.py -v
+python3 scripts/ios/test-verify-personal-ipa.py -v
+bash -n scripts/ios/prepare-rootfs-host.sh
+```
+
+### Standard build
 
 Requirements are upstream's, in [android/BUILDING.md](../android/BUILDING.md): a recent Xcode
 (the project is on the iOS 26 SDK), Homebrew `ninja meson llvm lld libarchive pkg-config`, Go 1.25
