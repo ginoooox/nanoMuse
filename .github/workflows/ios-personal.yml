@@ -187,7 +187,7 @@ jobs:
       - name: Verify packaged device identity and native platform
         run: |
           app=android/src/ios/build/PersonalDerivedData/Build/Products/Release-iphoneos/Minis.app
-          xcrun lipo -verify_arch arm64 "$app/Minis"
+          xcrun lipo "$app/Minis" -verify_arch arm64
           xcrun vtool -show-build "$app/Minis" | tee "$RUNNER_TEMP/ios-personal-platform.txt"
           grep -Eq 'platform[[:space:]]+IOS$' "$RUNNER_TEMP/ios-personal-platform.txt"
           python3 scripts/ios/verify-personal-ipa.py \

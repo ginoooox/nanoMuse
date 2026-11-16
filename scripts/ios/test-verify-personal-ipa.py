@@ -7,6 +7,7 @@ import hashlib
 import importlib.util
 import json
 import plistlib
+import shlex
 import struct
 import subprocess
 import sys
@@ -119,6 +120,22 @@ class PersonalIPAVerifierTests(unittest.TestCase):
         manifest["sourceRevision"] = "b" * 40
         self.ipa.with_suffix(".json").write_text(json.dumps(manifest))
         self.assertNotEqual(self.verify().returncode, 0)
+
+
+class PersonalWorkflowCommandTests(unittest.TestCase):
+    def test_lipo_file_precedes_variadic_architectures(self):
+        workflow = SCRIPTS.parents[1] / ".github/workflows/ios-personal.yml"
+        commands = [
+            shlex.split(line.strip())
+            for line in workflow.read_text(encoding="utf-8").splitlines()
+            if line.strip().startswith("xcrun lipo ")
+        ]
+        self.assertEqual(len(commands), 1)
+        arguments = commands[0]
+        operation = arguments.index("-verify_arch")
+        # Apple's lipo consumes every argument after -verify_arch as an architecture.
+        self.assertEqual(arguments[operation + 1 :], ["arm64"])
+        self.assertLess(arguments.index("$app/Minis"), operation)
 
 
 if __name__ == "__main__":
